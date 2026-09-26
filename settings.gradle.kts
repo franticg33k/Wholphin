@@ -30,3 +30,5 @@ dependencyResolutionManagement {
 rootProject.name = "Wholphin"
 include(":app")
 include(":wholphin-mpv-stub")
+include(":tvmode-core")
+include(":tvmode")
