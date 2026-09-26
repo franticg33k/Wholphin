@@ -28,6 +28,15 @@ The app touches very little so rebasing on upstream stays easy:
 | Last | Previous channel |
 | Back | Close the guide, or leave TV mode |
 
+## Guide and banner
+
+- Channel logos come from the plugin (`logoUrl`, served by `/CableTv/Logo/{id}` without authentication) and show in
+  the banner and the guide. Channels without one show only their number and name.
+- When channels have a category (set per channel in the plugin), the guide shows category chips above the grid:
+  press Up from the top row to reach them and pick one to filter the guide; *All* shows every channel.
+- Video keeps its aspect ratio (pixel aspect included): 4:3 and widescreen shows get black bars rather than being
+  stretched.
+
 ## How playback follows the schedule
 
 - The clock is the server's (`serverTime` on every response, kept from the lowest-latency sample), never the device's.

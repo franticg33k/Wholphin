@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -40,6 +41,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -47,9 +49,13 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.media3.ui.compose.PlayerSurface
 import androidx.media3.ui.compose.SURFACE_TYPE_SURFACE_VIEW
+import androidx.media3.ui.compose.modifiers.resizeWithContentScale
+import androidx.media3.ui.compose.state.rememberPresentationState
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import coil3.compose.AsyncImage
 import com.github.damontecres.wholphin.tvmode.core.GuideEntry
+import com.github.damontecres.wholphin.tvmode.core.TvChannel
 import kotlinx.coroutines.delay
 import java.time.Instant
 import java.time.ZoneId
@@ -70,6 +76,8 @@ fun CableTvScreen(
     val state by viewModel.state.collectAsState()
     val player by viewModel.player.collectAsState()
     val focusRequester = remember { FocusRequester() }
+    // Kept here rather than in the guide so the chosen category survives closing and reopening it.
+    var guideCategory by remember { mutableStateOf<String?>(null) }
 
     BackHandler {
         if (!viewModel.closeGuide()) onExit()
@@ -85,11 +93,15 @@ fun CableTvScreen(
                 .focusable(),
     ) {
         player?.let {
-            PlayerSurface(
-                player = it,
-                surfaceType = SURFACE_TYPE_SURFACE_VIEW,
-                modifier = Modifier.fillMaxSize(),
-            )
+            // Letterbox or pillarbox to the video's own aspect ratio (pixel aspect included) instead of stretching.
+            val presentation = rememberPresentationState(it)
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                PlayerSurface(
+                    player = it,
+                    surfaceType = SURFACE_TYPE_SURFACE_VIEW,
+                    modifier = Modifier.resizeWithContentScale(ContentScale.Fit, presentation.videoSizeDp),
+                )
+            }
         }
 
         if (state.showStatic || state.loading) {
@@ -109,7 +121,13 @@ fun CableTvScreen(
         }
 
         if (state.showGuide) {
-            GuideOverlay(state, onTune = viewModel::tuneTo, modifier = Modifier.fillMaxSize())
+            GuideOverlay(
+                state,
+                category = guideCategory,
+                onCategory = { guideCategory = it },
+                onTune = viewModel::tuneTo,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 
@@ -239,6 +257,8 @@ private fun ChannelBanner(
                 .padding(horizontal = 48.dp, vertical = 24.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            state.channel?.let { ChannelLogo(it, Modifier.width(96.dp).height(54.dp)) }
+            Spacer(Modifier.width(16.dp))
             Text(
                 text = state.digits.ifEmpty { state.channel?.number ?: "" },
                 color = Color.White,
@@ -246,7 +266,10 @@ private fun ChannelBanner(
                 fontWeight = FontWeight.Bold,
             )
             Spacer(Modifier.width(24.dp))
-            Text(text = state.channel?.name ?: "", color = Color.White, fontSize = 24.sp)
+            Column {
+                Text(text = state.channel?.name ?: "", color = Color.White, fontSize = 24.sp)
+                state.channel?.category?.let { Text(text = it, color = Color(0xFFBBBBBB), fontSize = 14.sp) }
+            }
         }
         state.now?.let { now ->
             Spacer(Modifier.height(8.dp))
@@ -278,25 +301,63 @@ private fun ChannelBanner(
 
 private val DP_PER_MINUTE = 6.dp
 
+/** A channel's logo, or nothing when it has none or it fails to load. */
+@Composable
+private fun ChannelLogo(
+    channel: TvChannel,
+    modifier: Modifier = Modifier,
+) {
+    val url = channel.logoUrl ?: return
+    AsyncImage(
+        model = url,
+        contentDescription = channel.name,
+        contentScale = ContentScale.Fit,
+        modifier = modifier,
+    )
+}
+
 @Composable
 private fun GuideOverlay(
     state: CableTvUiState,
+    category: String?,
+    onCategory: (String?) -> Unit,
     onTune: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val firstCell = remember { FocusRequester() }
+    val firstChip = remember { FocusRequester() }
+    val categories = remember(state.guide) { state.guide.mapNotNull { it.channel.category }.distinct() }
+    val selected = category?.takeIf { it in categories }
+    val rows = if (selected == null) state.guide else state.guide.filter { it.channel.category == selected }
     Column(
         modifier =
             modifier
                 .background(Color(0xE6000000))
                 .padding(32.dp),
     ) {
-        Text(text = "Guide", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text = "Guide", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+            if (categories.isNotEmpty()) {
+                Spacer(Modifier.width(24.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item(key = "all") {
+                        CategoryChip("All", selected == null, { onCategory(null) }, Modifier.focusRequester(firstChip))
+                    }
+                    items(categories, key = { it }) { name ->
+                        CategoryChip(name, selected == name, { onCategory(name) })
+                    }
+                }
+            }
+        }
         Spacer(Modifier.height(12.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(state.guide, key = { it.channel.id }) { row ->
+            items(rows, key = { it.channel.id }) { row ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.width(160.dp)) {
+                    Box(Modifier.width(72.dp).height(40.dp), contentAlignment = Alignment.Center) {
+                        ChannelLogo(row.channel, Modifier.size(width = 64.dp, height = 36.dp))
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Column(Modifier.width(140.dp)) {
                         Text(text = row.channel.number, color = Color.White, fontWeight = FontWeight.Bold)
                         Text(text = row.channel.name, color = Color(0xFFBBBBBB), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
@@ -317,11 +378,42 @@ private fun GuideOverlay(
             }
         }
     }
-    LaunchedEffect(state.guide.isNotEmpty()) {
-        if (state.guide.isNotEmpty()) {
-            runCatching { firstCell.requestFocus() }
+    LaunchedEffect(state.guide.isNotEmpty(), selected) {
+        if (state.guide.isEmpty()) return@LaunchedEffect
+        // Start on the airing programme of the current channel; when the filter hides it, on the category chips.
+        val currentShown = rows.any { it.channel.id == state.channel?.id }
+        if (!currentShown || runCatching { firstCell.requestFocus() }.isFailure) {
+            runCatching { firstChip.requestFocus() }
         }
     }
+}
+
+@Composable
+private fun CategoryChip(
+    name: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val background =
+        when {
+            focused -> MaterialTheme.colorScheme.primary
+            selected -> Color(0xFF3B4252)
+            else -> Color(0xFF1E2128)
+        }
+    Text(
+        text = name,
+        color = Color.White,
+        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+        modifier =
+            modifier
+                .background(background, RoundedCornerShape(16.dp))
+                .border(1.dp, if (focused || selected) Color.White else Color.Transparent, RoundedCornerShape(16.dp))
+                .onFocusChanged { focused = it.isFocused }
+                .clickable(onClick = onClick)
+                .padding(horizontal = 14.dp, vertical = 6.dp),
+    )
 }
 
 @Composable

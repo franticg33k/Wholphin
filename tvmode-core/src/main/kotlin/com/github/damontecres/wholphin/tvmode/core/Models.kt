@@ -14,6 +14,7 @@ data class ChannelDto(
     val logoUrl: String? = null,
     val scheduleVersion: String,
     val poolSize: Int = 0,
+    val category: String? = null,
 )
 
 @Serializable
@@ -103,6 +104,7 @@ data class TvChannel(
     val logoUrl: String?,
     val scheduleVersion: String,
     val poolSize: Int,
+    val category: String? = null,
 )
 
 /**
@@ -137,7 +139,18 @@ data class TvSlot(
 
 internal fun parseTime(value: String): Long = Instant.parse(value).toEpochMilli()
 
-internal fun ChannelDto.toChannel() = TvChannel(channelId, number, name, logoUrl, scheduleVersion, poolSize)
+internal fun ChannelDto.toChannel() =
+    TvChannel(
+        channelId,
+        number,
+        name,
+        logoUrl,
+        scheduleVersion,
+        poolSize,
+        category?.takeIf {
+            it.isNotBlank()
+        },
+    )
 
 internal fun SlotDto.toSlot() =
     TvSlot(
