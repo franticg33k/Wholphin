@@ -62,6 +62,54 @@ data class ScheduleDto(
 )
 
 @Serializable
+data class GuideProgramDto(
+    val guideGroup: String,
+    val start: String,
+    val end: String,
+    val itemId: String? = null,
+    val title: String? = null,
+    val episode: String? = null,
+    val episodeTitle: String? = null,
+    val premiere: Boolean? = null,
+    val lineup: String? = null,
+    val year: Int? = null,
+    val rating: String? = null,
+    val movie: Boolean? = null,
+)
+
+@Serializable
+data class ChannelGuideDto(
+    val channelId: String,
+    val scheduleVersion: String,
+    val programs: List<GuideProgramDto> = emptyList(),
+)
+
+@Serializable
+data class GuideDto(
+    val serverTime: String,
+    val from: String,
+    val to: String,
+    val channels: List<ChannelGuideDto> = emptyList(),
+)
+
+internal fun GuideProgramDto.toEntry() =
+    GuideEntry(
+        guideGroup = guideGroup,
+        title = title ?: "Off air",
+        episode = episode,
+        episodeTitle = episodeTitle,
+        startMs = parseTime(start),
+        endMs = parseTime(end),
+        premiere = premiere == true,
+        lineup = lineup,
+        offAir = itemId == null,
+        itemId = itemId,
+        year = year,
+        rating = rating?.takeIf { it.isNotBlank() },
+        movie = movie == true,
+    )
+
+@Serializable
 data class NowDto(
     val serverTime: String,
     val channelId: String,

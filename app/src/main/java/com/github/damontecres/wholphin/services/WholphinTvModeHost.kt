@@ -1,9 +1,11 @@
 package com.github.damontecres.wholphin.services
 
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.DefaultLoadControl
 import com.github.damontecres.wholphin.preferences.PlayerBackend
 import com.github.damontecres.wholphin.services.hilt.AuthOkHttpClient
 import com.github.damontecres.wholphin.tvmode.TvModeHost
+import com.github.damontecres.wholphin.tvmode.core.CableTvHttpException
 import com.github.damontecres.wholphin.tvmode.core.CableTvTransport
 import com.github.damontecres.wholphin.util.WholphinDispatchers
 import kotlinx.coroutines.withContext
@@ -52,7 +54,7 @@ class WholphinTvModeHost
                                 .build(),
                         ).execute()
                         .use { response ->
-                            if (!response.isSuccessful) throw IOException("HTTP ${response.code} for $path")
+                            if (!response.isSuccessful) throw CableTvHttpException(response.code, "HTTP ${response.code} for $path")
                             response.body.string()
                         }
                 }
@@ -78,7 +80,13 @@ class WholphinTvModeHost
             // TV mode clips items to their scheduled in/out points, which ExoPlayer supports; use it whatever the
             // default backend is.
             val prefs = userPreferencesService.getCurrent().appPreferences
-            return playerFactory.createVideoPlayer(PlayerBackend.EXO_PLAYER, prefs).player
+            // Start after one second of buffer rather than ExoPlayer's 2.5 s: every tune-in is a seek into a file.
+            val loadControl =
+                DefaultLoadControl
+                    .Builder()
+                    .setBufferDurationsMs(15_000, 50_000, 1_000, 2_000)
+                    .build()
+            return playerFactory.createVideoPlayer(PlayerBackend.EXO_PLAYER, prefs, loadControl).player
         }
 
         override fun releasePlayer(player: Player) {

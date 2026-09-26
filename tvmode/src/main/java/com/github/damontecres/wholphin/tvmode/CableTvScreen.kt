@@ -59,7 +59,9 @@ fun CableTvScreen(
     val state by viewModel.state.collectAsState()
     val player by viewModel.player.collectAsState()
     val settings by viewModel.settings.collectAsState()
-    val details by viewModel.details.collectAsState()
+    // States passed down unread, so a tick or a loaded description only recomposes what shows it.
+    val details = viewModel.details.collectAsState()
+    val clock = viewModel.clock.collectAsState()
     val focusRequester = remember { FocusRequester() }
     var guideCategory by remember { mutableStateOf<String?>(null) }
     var showSettings by remember { mutableStateOf(false) }
@@ -102,6 +104,7 @@ fun CableTvScreen(
                             current = state.channel,
                             windowStartMs = state.guideWindowStartMs,
                             nowMs = state.nowMs,
+                            clock = clock,
                             details = details,
                             settings = settings,
                             images = images,
@@ -126,6 +129,7 @@ fun CableTvScreen(
                             upcoming = state.upcoming,
                             details = details,
                             nowMs = state.nowMs,
+                            clock = clock,
                             clock24h = settings.clock24h,
                             showMediaInfo = settings.mediaInfo,
                             images = images,

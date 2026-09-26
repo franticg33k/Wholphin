@@ -8,6 +8,7 @@ import androidx.media3.common.Player
 import com.github.damontecres.wholphin.tvmode.core.CableTvClient
 import com.github.damontecres.wholphin.tvmode.core.ChannelNavigator
 import com.github.damontecres.wholphin.tvmode.core.Guide
+import com.github.damontecres.wholphin.tvmode.core.GuideCache
 import com.github.damontecres.wholphin.tvmode.core.GuideEntry
 import com.github.damontecres.wholphin.tvmode.core.ItemDetails
 import com.github.damontecres.wholphin.tvmode.core.PlayItem
@@ -56,6 +57,10 @@ data class CableTvUiState(
     val guideStartMs: Long = 0,
     /** Start of the half-hour window the guide grid shows; moves in 30-minute steps. */
     val guideWindowStartMs: Long = 0,
+    /**
+     * Server time, updated every [CableTvViewModel.COARSE_CLOCK_MS] so screens that only need the minute (guide
+     * cells, "min left") don't recompose every tick. Use [CableTvViewModel.clock] for a running clock.
+     */
     val nowMs: Long = 0,
 )
 
@@ -81,6 +86,15 @@ class CableTvViewModel
         private var focusDetailsJob: Job? = null
         private val client = CableTvClient(host.transport)
         private val cache = ScheduleCache()
+        private val guideCache = GuideCache()
+
+        /** False once the server turns out to lack the guide endpoint (an older plugin). */
+        private var guideEndpoint = true
+
+        private val _clock = MutableStateFlow(0L)
+
+        /** Server time every second, for clocks and progress bars; read it only where it's drawn. */
+        val clock: StateFlow<Long> = _clock.asStateFlow()
         private val navigator = ChannelNavigator(emptyList())
 
         private val _state = MutableStateFlow(CableTvUiState())
@@ -154,6 +168,7 @@ class CableTvViewModel
                 _player.value = player
                 _state.update { it.copy(loading = false) }
                 navigator.current?.let { tune(it) }
+                // Fetch the whole guide now, so opening it later is instant.
                 refreshGuide()
             } catch (e: Exception) {
                 _state.update { it.copy(loading = false, error = "Couldn't reach the Cable TV plugin: ${e.message}") }
@@ -297,7 +312,23 @@ class CableTvViewModel
                             _state.update { it.copy(showStatic = true) }
                         }
                     }
+                    prefetchNeighbours()
                 }
+        }
+
+        /** Loads the schedules of the channels either side, so surfing up or down starts without a network wait. */
+        private suspend fun prefetchNeighbours() {
+            val channels = navigator.channels
+            val index = channels.indexOfFirst { it.id == navigator.current?.id }
+            if (index < 0 || channels.size < 2) return
+            val now = client.clock.nowMs()
+            val around =
+                (-NEIGHBOURS..NEIGHBOURS)
+                    .filter { it != 0 }
+                    .map { channels[Math.floorMod(index + it, channels.size)].id }
+                    .distinct()
+                    .filter { !cache.covers(it, now, MIN_AHEAD_MS) }
+            if (around.isNotEmpty()) fetch(around, now)
         }
 
         private fun retune() {
@@ -361,10 +392,41 @@ class CableTvViewModel
             val channels = navigator.channels
             if (channels.isEmpty()) return
             val now = client.clock.nowMs()
-            val missing = channels.filter { !cache.covers(it.id, now, GUIDE_AHEAD_MS) }.map { it.id }
-            if (missing.isNotEmpty()) fetch(missing, now)
             val start = now - (now % HALF_HOUR_MS)
-            val rows = channels.map { GuideRow(it, Guide.entries(cache.slotsBetween(it.id, start, start + GUIDE_AHEAD_MS))) }
+            val end = start + GUIDE_AHEAD_MS
+            if (guideEndpoint) {
+                val missing = channels.filter { !guideCache.covers(it.id, start, end - HALF_HOUR_MS) }.map { it.id }
+                if (missing.isNotEmpty()) {
+                    try {
+                        // Fetch a little further than shown, so the next refreshes find it cached.
+                        val to = end + HALF_HOUR_MS * 2
+                        val guides = withContext(Dispatchers.IO) { client.guide(missing, start, to) }
+                        if (guides == null) guideEndpoint = false else guides.forEach { guideCache.put(it, start, to) }
+                    } catch (e: Exception) {
+                        // Show what's cached; the next refresh tries again.
+                    }
+                }
+            }
+            if (!guideEndpoint) {
+                val missing = channels.filter { !cache.covers(it.id, now, GUIDE_AHEAD_MS) }.map { it.id }
+                if (missing.isNotEmpty()) fetch(missing, now)
+            }
+            val rows =
+                withContext(Dispatchers.Default) {
+                    channels.map {
+                        val entries =
+                            if (guideEndpoint) {
+                                guideCache.entriesBetween(
+                                    it.id,
+                                    start,
+                                    end,
+                                )
+                            } else {
+                                Guide.entries(cache.slotsBetween(it.id, start, end))
+                            }
+                        GuideRow(it, entries)
+                    }
+                }
             _state.update {
                 // Keep the grid where the viewer scrolled it, unless the half hour has moved past it.
                 val window = it.guideWindowStartMs.coerceIn(start, start + GUIDE_AHEAD_MS - GUIDE_WINDOW_MS)
@@ -377,6 +439,7 @@ class CableTvViewModel
                 val channels = withContext(Dispatchers.IO) { client.channels() }
                 channels.forEach { channel ->
                     // A new version means the plugin rebuilt the channel: drop what's cached and re-tune if watching it.
+                    guideCache.version(channel.id)?.let { if (it != channel.scheduleVersion) guideCache.invalidate(channel.id) }
                     if (cache.version(channel.id) != null && cache.version(channel.id) != channel.scheduleVersion) {
                         cache.invalidate(channel.id)
                         if (navigator.current?.id == channel.id) retune()
@@ -392,7 +455,10 @@ class CableTvViewModel
             while (viewModelScope.isActive) {
                 delay(TICK_MS)
                 val now = client.clock.nowMs()
-                _state.update { it.copy(nowMs = now) }
+                _clock.value = now
+                if (now / COARSE_CLOCK_MS != _state.value.nowMs / COARSE_CLOCK_MS) {
+                    _state.update { it.copy(nowMs = now) }
+                }
 
                 digitsCommitAtMs?.let { at ->
                     if (now >= at) {
@@ -463,25 +529,28 @@ class CableTvViewModel
             super.onCleared()
         }
 
-        private companion object {
-            const val TICK_MS = 500L
-            const val BANNER_MS = 6_000L
-            const val DIGIT_ERROR_MS = 1_200L
-            const val FOCUS_DETAILS_DELAY_MS = 150L
-            const val MAX_DETAILS = 300
-            const val UPCOMING = 3
-            const val GUIDE_REFRESH_MS = 60_000L
-            const val GUIDE_WINDOW_MS = 2 * 60 * 60_000L
-            const val DIGIT_TIMEOUT_MS = 2_000L
-            const val DRIFT_CHECK_MS = 10_000L
-            const val MAX_DRIFT_MS = 5_000L
-            const val CHANNEL_REFRESH_MS = 10 * 60_000L
-            const val MIN_AHEAD_MS = 30 * 60_000L
-            const val REFRESH_WHEN_LESS_THAN_MS = 2 * 60 * 60_000L
-            const val FETCH_BACK_MS = 60 * 60_000L
-            const val FETCH_AHEAD_MS = 6 * 60 * 60_000L
-            const val GUIDE_BACK_MS = 60 * 60_000L
-            const val GUIDE_AHEAD_MS = 6 * 60 * 60_000L
-            const val HALF_HOUR_MS = 30 * 60_000L
+        companion object {
+            /** How often [CableTvUiState.nowMs] moves. */
+            const val COARSE_CLOCK_MS = 30_000L
+            private const val NEIGHBOURS = 2
+            private const val TICK_MS = 500L
+            private const val BANNER_MS = 6_000L
+            private const val DIGIT_ERROR_MS = 1_200L
+            private const val FOCUS_DETAILS_DELAY_MS = 150L
+            private const val MAX_DETAILS = 300
+            private const val UPCOMING = 3
+            private const val GUIDE_REFRESH_MS = 60_000L
+            private const val GUIDE_WINDOW_MS = 2 * 60 * 60_000L
+            private const val DIGIT_TIMEOUT_MS = 2_000L
+            private const val DRIFT_CHECK_MS = 10_000L
+            private const val MAX_DRIFT_MS = 5_000L
+            private const val CHANNEL_REFRESH_MS = 10 * 60_000L
+            private const val MIN_AHEAD_MS = 30 * 60_000L
+            private const val REFRESH_WHEN_LESS_THAN_MS = 2 * 60 * 60_000L
+            private const val FETCH_BACK_MS = 60 * 60_000L
+            private const val FETCH_AHEAD_MS = 6 * 60 * 60_000L
+            private const val GUIDE_BACK_MS = 60 * 60_000L
+            private const val GUIDE_AHEAD_MS = 6 * 60 * 60_000L
+            private const val HALF_HOUR_MS = 30 * 60_000L
         }
     }

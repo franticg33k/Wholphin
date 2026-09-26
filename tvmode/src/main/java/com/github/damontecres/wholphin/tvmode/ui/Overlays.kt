@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.State
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -29,14 +31,16 @@ import com.github.damontecres.wholphin.tvmode.core.GuideEntry
 import com.github.damontecres.wholphin.tvmode.core.ItemDetails
 import com.github.damontecres.wholphin.tvmode.core.TvChannel
 
-/** Everything the player overlays need. */
-data class OverlayData(
+/** Everything the player overlays need. The clock and details are states, read only where they're drawn. */
+@Stable
+class OverlayData(
     val channel: TvChannel?,
     val now: GuideEntry?,
     val next: GuideEntry?,
     val upcoming: List<GuideEntry>,
-    val details: Map<String, ItemDetails>,
+    val details: State<Map<String, ItemDetails>>,
     val nowMs: Long,
+    val clock: State<Long>,
     val clock24h: Boolean,
     val showMediaInfo: Boolean,
     val images: ImageUrls,
@@ -67,11 +71,11 @@ fun ClassicOverlay(
             }
             data.now?.let { now ->
                 Spacer(Modifier.height(10.dp))
-                Timeline(now, data.nowMs, data.clock24h)
+                Timeline(now, data.clock, data.clock24h)
             }
             if (data.showMediaInfo) {
                 Spacer(Modifier.height(10.dp))
-                MediaBubbles(data.now?.itemId?.let { data.details[it] })
+                MediaBubbles(data.now?.itemId?.let { data.details.value[it] })
             }
         }
     }
@@ -103,7 +107,7 @@ private fun NowNextBlock(
     modifier: Modifier = Modifier,
 ) {
     val theme = LocalTvTheme.current
-    val details = entry.itemId?.let { data.details[it] }
+    val details = entry.itemId?.let { data.details.value[it] }
     Column(modifier, horizontalAlignment = align) {
         TvText(label, size = 13.sp, bold = true, color = theme.accent)
         Spacer(Modifier.height(4.dp))
@@ -140,10 +144,11 @@ private fun NowNextBlock(
 @Composable
 private fun Timeline(
     now: GuideEntry,
-    nowMs: Long,
+    clock: State<Long>,
     clock24h: Boolean,
 ) {
     val theme = LocalTvTheme.current
+    val nowMs = clock.value
     val progress = ((nowMs - now.startMs).toFloat() / (now.endMs - now.startMs).coerceAtLeast(1)).coerceIn(0f, 1f)
     Row(verticalAlignment = Alignment.CenterVertically) {
         TvText(formatTime(now.startMs, clock24h), size = 13.sp, color = theme.textSecondary)
@@ -239,7 +244,7 @@ fun LineupOverlay(
                 }
             }
             Spacer(Modifier.width(16.dp))
-            TvText(formatTime(data.nowMs, data.clock24h), size = 26.sp, bold = true, color = Color.White)
+            TvText(formatTime(data.clock.value, data.clock24h), size = 26.sp, bold = true, color = Color.White)
         }
     }
 }

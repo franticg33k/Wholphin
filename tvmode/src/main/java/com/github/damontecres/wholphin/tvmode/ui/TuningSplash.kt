@@ -1,5 +1,6 @@
 package com.github.damontecres.wholphin.tvmode.ui
 
+import android.graphics.Bitmap
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -14,7 +15,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -22,6 +23,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.github.damontecres.wholphin.tvmode.TuningStyle
@@ -68,29 +73,39 @@ fun TuningSplash(
     }
 }
 
-/** Analogue-TV snow. */
+/** Analogue-TV snow: a few pre-rendered low-resolution frames, cycled and scaled up without smoothing. */
 @Composable
 fun StaticNoise(modifier: Modifier = Modifier) {
-    var frame by remember { mutableLongStateOf(0L) }
+    val frames = remember { List(NOISE_FRAMES) { noiseFrame(it) } }
+    var frame by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) {
         while (true) {
-            delay(50)
-            frame++
+            delay(60)
+            frame = (frame + 1) % frames.size
         }
     }
     Canvas(modifier) {
-        val random = Random(frame)
-        val cell = 6.dp.toPx()
-        val columns = (size.width / cell).toInt() + 1
-        val rows = (size.height / cell).toInt() + 1
-        drawRect(Color(0xFF101010))
-        for (row in 0 until rows) {
-            for (column in 0 until columns) {
-                val v = random.nextFloat()
-                if (v > 0.45f) drawRect(Color(v, v, v), Offset(column * cell, row * cell), Size(cell, cell))
-            }
-        }
+        drawImage(
+            image = frames[frame],
+            dstSize = IntSize(size.width.toInt(), size.height.toInt()),
+            filterQuality = FilterQuality.None,
+        )
     }
+}
+
+private const val NOISE_FRAMES = 6
+private const val NOISE_WIDTH = 192
+private const val NOISE_HEIGHT = 108
+
+private fun noiseFrame(seed: Int): ImageBitmap {
+    val random = Random(seed * 7919 + 17)
+    val pixels =
+        IntArray(NOISE_WIDTH * NOISE_HEIGHT) {
+            val v = random.nextInt(256)
+            val grey = if (v < 115) 0x10 else v
+            (0xFF shl 24) or (grey shl 16) or (grey shl 8) or grey
+        }
+    return Bitmap.createBitmap(pixels, NOISE_WIDTH, NOISE_HEIGHT, Bitmap.Config.ARGB_8888).asImageBitmap()
 }
 
 private val bars =

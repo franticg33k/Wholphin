@@ -36,6 +36,10 @@ android {
     }
 }
 
+composeCompiler {
+    stabilityConfigurationFiles.add(project.layout.projectDirectory.file("compose-stability.conf"))
+}
+
 dependencies {
     api(project(":tvmode-core"))
 

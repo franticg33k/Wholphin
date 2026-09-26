@@ -25,6 +25,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -60,7 +62,8 @@ private const val HALF_HOUR_MS = 30 * 60_000L
 private const val WINDOW_SLOTS = 4
 private val CHANNEL_COLUMN = 170.dp
 
-/** What the guide shows and what it can do. */
+/** What the guide shows and what it can do. The clock and details are states, read only where they're drawn. */
+@Stable
 class GuideModel(
     val rows: List<GuideRow>,
     val categories: List<String>,
@@ -68,7 +71,8 @@ class GuideModel(
     val current: TvChannel?,
     val windowStartMs: Long,
     val nowMs: Long,
-    val details: Map<String, ItemDetails>,
+    val clock: State<Long>,
+    val details: State<Map<String, ItemDetails>>,
     val settings: TvModeSettings,
     val images: ImageUrls,
     val onCategory: (String?) -> Unit,
@@ -152,7 +156,7 @@ fun RetroGuide(
                 val startIndex = model.rows.indexOfFirst { it.channel.id == model.current?.id }.coerceAtLeast(0)
                 val listState = rememberLazyListState(initialFirstVisibleItemIndex = startIndex)
                 LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-                    items(model.rows, key = { it.channel.id }) { row ->
+                    items(model.rows, key = { it.channel.id }, contentType = { "row" }) { row ->
                         GuideRowView(
                             row = row,
                             model = model,
@@ -259,7 +263,7 @@ private fun InfoPanel(
     val theme = LocalTvTheme.current
     Box(modifier.fillMaxWidth()) {
         val (channel, entry) = focused ?: return@Box
-        val details = entry.itemId?.let { model.details[it] }
+        val details = entry.itemId?.let { model.details.value[it] }
         details?.backdropItemId?.let {
             AsyncImage(
                 model = model.images.url(it, "Backdrop", 540),
@@ -383,7 +387,7 @@ private fun TimeRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.width(CHANNEL_COLUMN).padding(start = 12.dp)) {
-            TvText(formatClock(model.nowMs, model.settings.clock24h), size = 14.sp, bold = true, color = theme.timeRowText)
+            TvText(formatClock(model.clock.value, model.settings.clock24h), size = 14.sp, bold = true, color = theme.timeRowText)
         }
         repeat(WINDOW_SLOTS) { i ->
             Row(Modifier.width(slotWidth).fillMaxHeight(), verticalAlignment = Alignment.CenterVertically) {

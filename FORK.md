@@ -30,7 +30,7 @@ Rules for any change in this fork:
 
 ### Upstream files this fork changes
 
-These are the only places a sync can conflict (about 38 lines in total):
+These are the only places a sync can conflict (about 41 lines in total):
 
 | File | Change |
 |---|---|
@@ -42,6 +42,7 @@ These are the only places a sync can conflict (about 38 lines in total):
 | `ui/nav/NavDrawer.kt` | `NavDrawerItem.CableTv` and its cases in three `when` blocks |
 | `services/NavDrawerService.kt` | adds the item when `CableTvAvailability` says the plugin is there |
 | `res/values/strings.xml` | `cable_tv` string |
+| `services/PlayerFactory.kt` | optional `loadControl` parameter on `createVideoPlayer` (TV mode starts playback after less buffering) |
 
 ## Syncing with upstream
 

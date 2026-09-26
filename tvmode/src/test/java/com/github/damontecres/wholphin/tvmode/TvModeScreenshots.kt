@@ -196,7 +196,8 @@ class TvModeScreenshots {
             current = channels[3],
             windowStartMs = windowStart,
             nowMs = now,
-            details = details,
+            clock = mutableStateOf(now),
+            details = mutableStateOf(details),
             settings = settings,
             images = { _, _, _ -> "" },
             onCategory = {},
@@ -225,8 +226,9 @@ class TvModeScreenshots {
                 now = rows[3].entries[0],
                 next = rows[3].entries[1],
                 upcoming = rows[4].entries.take(3),
-                details = details,
+                details = mutableStateOf(details),
                 nowMs = now,
+                clock = mutableStateOf(now),
                 clock24h = false,
                 showMediaInfo = true,
                 images = { _, _, _ -> "" },
@@ -240,6 +242,7 @@ class TvModeScreenshots {
             LineupOverlay(data)
             DigitOverlay("20", 3, false)
         }
+        render("tuning-static") { TuningSplash(TuningStyle.STATIC, channels[3], true, false, Modifier.fillMaxSize()) }
         render("tuning-standby") { TuningSplash(TuningStyle.STANDBY, channels[3], true, false, Modifier.fillMaxSize()) }
     }
 }
