@@ -1,0 +1,113 @@
+# Fork-only workflow (not in upstream Wholphin): keeps this fork current with damontecres/Wholphin.
+#
+# Weekly (or on demand) it
+#   1. fast-forwards main to upstream main and copies upstream's version tags (main is a pure mirror; never commit to it),
+#   2. merges upstream main into a sync/upstream-<date> branch cut from cable-tv,
+#   3. builds and tests the result, and
+#   4. opens a PR into cable-tv with the build result, or an issue listing the conflicting files if the merge needs a human.
+#
+# Opening the PR or issue needs Settings > Actions > General > "Allow GitHub Actions to create and approve pull requests".
+# Schedules only run from the default branch, so make cable-tv the default branch. See FORK.md.
+name: Sync upstream
+
+on:
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  GRADLE_OPTS: "-Dorg.gradle.jvmargs='-Xmx12g -XX:MaxMetaspaceSize=1024m'"
+  UPSTREAM: https://github.com/damontecres/Wholphin.git
+  # A personal access token with the "workflow" scope is needed to push upstream changes to workflow files;
+  # without the SYNC_TOKEN secret the built-in token is used and such syncs stop at the push step.
+  GH_TOKEN: ${{ secrets.SYNC_TOKEN || github.token }}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout cable-tv
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: cable-tv
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_TOKEN || github.token }}
+
+      - name: Fetch upstream
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream "$UPSTREAM"
+          git fetch --tags upstream main
+
+      - name: Mirror upstream main and tags
+        run: |
+          # Fails (and stops the sync) if main has commits upstream doesn't: main must stay a pure mirror.
+          git push origin refs/remotes/upstream/main:refs/heads/main
+          git push origin --tags
+
+      - name: Merge upstream into a sync branch
+        id: merge
+        run: |
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "cable-tv already contains upstream main."
+            echo "result=current" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          branch="sync/upstream-$(date -u +%Y%m%d)"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          git checkout -b "$branch"
+          if git merge --no-edit upstream/main; then
+            echo "result=merged" >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo "conflicts<<EOF"
+              git diff --name-only --diff-filter=U
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+            git merge --abort
+            echo "result=conflict" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup
+        if: steps.merge.outputs.result == 'merged'
+        uses: ./.github/actions/setup
+
+      - name: Build and test the merge
+        id: build
+        if: steps.merge.outputs.result == 'merged'
+        continue-on-error: true
+        run: ./gradlew :tvmode-core:test assembleDefaultDebug testDefaultDebugUnitTest --no-daemon
+
+      - name: Open a PR
+        if: steps.merge.outputs.result == 'merged'
+        run: |
+          git push origin "${{ steps.merge.outputs.branch }}"
+          if [ "${{ steps.build.outcome }}" = "success" ]; then
+            status="Build and tests passed on the merge."
+          else
+            status="**Build or tests failed on the merge** - see ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}. Fix on this branch before merging."
+          fi
+          gh pr create --base cable-tv --head "${{ steps.merge.outputs.branch }}" \
+            --title "Sync upstream Wholphin ($(date -u +%Y-%m-%d))" \
+            --body "Merges upstream damontecres/Wholphin main into cable-tv. $status Merge with a merge commit (not squash) so the next sync starts from here."
+
+      - name: Report conflicts
+        if: steps.merge.outputs.result == 'conflict'
+        run: |
+          gh issue create --title "Upstream sync needs a manual merge ($(date -u +%Y-%m-%d))" --body "Merging upstream main into cable-tv conflicts in:
+
+          \`\`\`
+          ${{ steps.merge.outputs.conflicts }}
+          \`\`\`
+
+          Resolve it locally: see FORK.md, Syncing with upstream."

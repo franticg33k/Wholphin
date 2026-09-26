@@ -1,6 +1,6 @@
 # Cable TV mode
 
-A full-screen TV for channels scheduled by the [Cable TV Jellyfin plugin](https://github.com/arun-iv/jellyfin-cable-tv).
+A full-screen TV for channels scheduled by the [Cable TV Jellyfin plugin](https://github.com/franticg33k/jellyfin-cable-tv).
 Tuning is instant and needs no server transcoding: the app keeps the schedule, works out what airs now and how far
 into it, and direct-plays the original file from that point, with the next items queued so they preload.
 

@@ -1,0 +1,38 @@
+# Fork-only workflow (not in upstream Wholphin): builds the cable-tv branch and PRs into it, runs the Cable TV mode
+# tests, and uploads the debug APKs so they can be downloaded from the run's summary page.
+name: Cable TV build
+
+on:
+  push:
+    branches:
+      - cable-tv
+  pull_request:
+    branches:
+      - cable-tv
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  GRADLE_OPTS: "-Dorg.gradle.jvmargs='-Xmx12g -XX:MaxMetaspaceSize=1024m'"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Setup
+        uses: ./.github/actions/setup
+      - name: Build and test
+        run: ./gradlew :tvmode-core:test assembleDefaultDebug --no-daemon
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: wholphin-cable-tv-debug-${{ github.run_number }}
+          path: app/build/outputs/apk/default/debug/*.apk
+          retention-days: 30
