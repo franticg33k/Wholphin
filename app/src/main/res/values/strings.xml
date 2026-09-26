@@ -489,6 +489,7 @@
     <string name="force_dovi_profile_7_summary">Ignores device compatibility checks</string>
 
     <string name="discover">Discover</string>
+    <string name="cable_tv">Cable TV</string>
     <string name="request">Request</string>
     <string name="pending">Pending</string>
     <string name="seerr_integration">Seerr integration</string>

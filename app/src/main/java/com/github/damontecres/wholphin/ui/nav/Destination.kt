@@ -145,6 +145,10 @@ sealed class Destination(
     @Serializable
     data object Favorites : Destination(false)
 
+    /** Cable TV mode, for servers running the Cable TV plugin. */
+    @Serializable
+    data object CableTv : Destination(true)
+
     @Serializable
     data object Discover : Destination(false)
 

@@ -50,8 +50,11 @@ val gitTags =
 
 val gitDescribe =
     providers
-        .exec { commandLine("git", "describe", "--tags", "--long", "--match=v*") }
-        .standardOutput.asText
+        .exec {
+            commandLine("git", "describe", "--tags", "--long", "--match=v*")
+            // Forks and shallow clones may have no tags; fall back to 0.0.0 below instead of failing the build.
+            isIgnoreExitValue = true
+        }.standardOutput.asText
         .getOrElse("v0.0.0")
 
 kotlin {
@@ -334,6 +337,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     implementation(libs.hilt.android)
+    implementation(project(":tvmode"))
     implementation(libs.androidx.room.common.jvm)
     implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.compose.material3)

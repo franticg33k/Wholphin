@@ -138,6 +138,10 @@ class NavDrawerViewModel
                     )
                 }
 
+                NavDrawerItem.CableTv -> {
+                    navigationManager.navigateTo(Destination.CableTv)
+                }
+
                 is ServerNavDrawerItem -> {
                     setIndex(index)
                     navigationManager.navigateToFromDrawer(item.destination)
@@ -169,6 +173,7 @@ class NavDrawerViewModel
                             is ServerNavDrawerItem -> it.destination
                             is NavDrawerItem.Favorites -> Destination.Favorites
                             is NavDrawerItem.Discover -> Destination.Discover
+                            is NavDrawerItem.CableTv -> Destination.CableTv
                             else -> null
                         }
                     }
@@ -242,6 +247,13 @@ sealed interface NavDrawerItem {
             get() = "a_discover"
 
         override fun name(context: Context): String = context.getString(R.string.discover)
+    }
+
+    object CableTv : NavDrawerItem {
+        override val id: String
+            get() = "a_cable_tv"
+
+        override fun name(context: Context): String = context.getString(R.string.cable_tv)
     }
 }
 
@@ -672,6 +684,10 @@ fun NavigationDrawerScope.NavItem(
 
                 NavDrawerItem.Discover -> {
                     R.string.fa_magnifying_glass_plus
+                }
+
+                NavDrawerItem.CableTv -> {
+                    R.string.fa_tv
                 }
 
                 is ServerNavDrawerItem -> {
