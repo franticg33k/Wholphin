@@ -64,6 +64,9 @@ class CableTvClient(
 
     suspend fun presentation(): PresentationDto = fetch("CableTv/Presentation", emptyMap()) { null }
 
+    /** Programme details from Jellyfin itself, for the guide's info panel and the player overlay. */
+    suspend fun details(itemId: String): ItemDetails = fetch<JellyfinItemDto>("Items/$itemId", emptyMap()) { null }.toDetails()
+
     private suspend inline fun <reified T> fetch(
         path: String,
         query: Map<String, String>,

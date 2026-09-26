@@ -68,6 +68,12 @@ class WholphinTvModeHost
                 static = true,
             )
 
+        override fun imageUrl(
+            itemId: String,
+            type: String,
+            maxHeight: Int,
+        ): String = "${api.baseUrl.orEmpty().trimEnd('/')}/Items/$itemId/Images/$type?maxHeight=$maxHeight&quality=90"
+
         override suspend fun createPlayer(): Player {
             // TV mode clips items to their scheduled in/out points, which ExoPlayer supports; use it whatever the
             // default backend is.

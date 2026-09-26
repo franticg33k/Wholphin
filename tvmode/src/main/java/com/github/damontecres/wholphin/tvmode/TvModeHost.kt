@@ -17,6 +17,16 @@ interface TvModeHost {
         mediaSourceId: String?,
     ): String
 
+    /**
+     * URL of an item's image ("Logo", "Backdrop", "Primary"), scaled to at most [maxHeight] pixels. Jellyfin serves
+     * images without authentication, so the URL can go straight to the image loader.
+     */
+    fun imageUrl(
+        itemId: String,
+        type: String,
+        maxHeight: Int,
+    ): String
+
     /** Creates the video player, configured with the user's playback settings. */
     suspend fun createPlayer(): Player
 

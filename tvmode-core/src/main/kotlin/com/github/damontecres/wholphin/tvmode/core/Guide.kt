@@ -11,7 +11,28 @@ data class GuideEntry(
     val premiere: Boolean,
     val lineup: String?,
     val offAir: Boolean,
-)
+    val itemId: String? = null,
+    val year: Int? = null,
+    val rating: String? = null,
+    val movie: Boolean = false,
+) {
+    /** What kind of programme this is, for guide colours. */
+    val contentType: ContentType
+        get() =
+            when {
+                offAir -> ContentType.OFF_AIR
+                rating?.uppercase() in KIDS_RATINGS -> ContentType.KIDS
+                movie -> ContentType.MOVIE
+                else -> ContentType.SHOW
+            }
+
+    private companion object {
+        val KIDS_RATINGS = setOf("TV-Y", "TV-Y7", "TV-Y7-FV", "TV-G", "G")
+    }
+}
+
+/** Guide colour groups. */
+enum class ContentType { SHOW, MOVIE, KIDS, OFF_AIR }
 
 object Guide {
     /** Groups slots into guide cells by their guide group, the way the plugin's Live TV guide does. */
@@ -33,6 +54,10 @@ object Guide {
                     premiere = group.any { it.premiere },
                     lineup = group.firstNotNullOfOrNull { it.lineup },
                     offAir = program == null && group.none { it.isPlayable },
+                    itemId = program?.itemId,
+                    year = program?.year,
+                    rating = program?.rating,
+                    movie = program?.movie == true,
                 )
             group = mutableListOf()
         }

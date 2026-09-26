@@ -9,6 +9,7 @@ import com.github.damontecres.wholphin.tvmode.core.CableTvClient
 import com.github.damontecres.wholphin.tvmode.core.ChannelNavigator
 import com.github.damontecres.wholphin.tvmode.core.Guide
 import com.github.damontecres.wholphin.tvmode.core.GuideEntry
+import com.github.damontecres.wholphin.tvmode.core.ItemDetails
 import com.github.damontecres.wholphin.tvmode.core.PlayItem
 import com.github.damontecres.wholphin.tvmode.core.ScheduleCache
 import com.github.damontecres.wholphin.tvmode.core.TuneInPlanner
@@ -41,12 +42,20 @@ data class CableTvUiState(
     val channel: TvChannel? = null,
     val now: GuideEntry? = null,
     val next: GuideEntry? = null,
+    /** The programmes after [now], for the lineup overlay. */
+    val upcoming: List<GuideEntry> = emptyList(),
     val showBanner: Boolean = false,
     val showStatic: Boolean = true,
     val digits: String = "",
+    /** The typed number matched no channel; shown in red briefly. */
+    val digitError: Boolean = false,
+    /** How many digits the longest channel number has. */
+    val digitSlots: Int = 4,
     val showGuide: Boolean = false,
     val guide: List<GuideRow> = emptyList(),
     val guideStartMs: Long = 0,
+    /** Start of the half-hour window the guide grid shows; moves in 30-minute steps. */
+    val guideWindowStartMs: Long = 0,
     val nowMs: Long = 0,
 )
 
@@ -60,7 +69,16 @@ class CableTvViewModel
     @Inject
     constructor(
         private val host: TvModeHost,
+        private val settingsStore: TvModeSettingsStore,
     ) : ViewModel() {
+        val settings: StateFlow<TvModeSettings> = settingsStore.settings
+
+        private val _details = MutableStateFlow<Map<String, ItemDetails>>(emptyMap())
+
+        /** Programme details from Jellyfin by item id, fetched on demand (see [requestDetails]). */
+        val details: StateFlow<Map<String, ItemDetails>> = _details.asStateFlow()
+        private val detailsLoading = mutableSetOf<String>()
+        private var focusDetailsJob: Job? = null
         private val client = CableTvClient(host.transport)
         private val cache = ScheduleCache()
         private val navigator = ChannelNavigator(emptyList())
@@ -75,8 +93,10 @@ class CableTvViewModel
         private var staticUntilMs: Long? = null
         private var bannerHideAtMs = 0L
         private var digitsCommitAtMs: Long? = null
+        private var digitErrorUntilMs = 0L
         private var lastDriftCheckMs = 0L
         private var lastChannelRefreshMs = 0L
+        private var lastGuideRefreshMs = 0L
         private var tuneJob: Job? = null
 
         private val listener =
@@ -127,6 +147,7 @@ class CableTvViewModel
                     return
                 }
                 navigator.update(channels)
+                _state.update { it.copy(digitSlots = channels.maxOf { c -> c.number.length }.coerceIn(1, 5)) }
                 val player = host.createPlayer()
                 player.addListener(listener)
                 player.playWhenReady = true
@@ -151,18 +172,79 @@ class CableTvViewModel
         }
 
         fun digit(value: Int) {
+            val typed = navigator.pendingDigits + value
             val channel = navigator.typeDigit(value)
-            if (channel != null) {
-                digitsCommitAtMs = null
-                tune(channel)
-            } else {
-                digitsCommitAtMs = client.clock.nowMs() + DIGIT_TIMEOUT_MS
-                _state.update { it.copy(digits = navigator.pendingDigits, showBanner = true) }
-                bannerHideAtMs = client.clock.nowMs() + BANNER_MS
+            when {
+                channel != null -> {
+                    digitsCommitAtMs = null
+                    tune(channel)
+                }
+
+                navigator.pendingDigits.isEmpty() -> {
+                    // A full-length number that no channel has.
+                    digitsCommitAtMs = null
+                    digitErrorUntilMs = client.clock.nowMs() + DIGIT_ERROR_MS
+                    _state.update { it.copy(digits = typed, digitError = true) }
+                }
+
+                else -> {
+                    digitsCommitAtMs = client.clock.nowMs() + DIGIT_TIMEOUT_MS
+                    _state.update { it.copy(digits = navigator.pendingDigits, digitError = false) }
+                }
             }
         }
 
         fun exit() = host.exit()
+
+        fun imageUrl(
+            itemId: String,
+            type: String,
+            maxHeight: Int,
+        ): String = host.imageUrl(itemId, type, maxHeight)
+
+        fun updateSettings(transform: (TvModeSettings) -> TvModeSettings) = settingsStore.update(transform)
+
+        /** Back: from full screen it opens the guide; from the guide it leaves TV mode. */
+        fun back() {
+            if (_state.value.showGuide) exit() else toggleGuide()
+        }
+
+        /** Loads a programme's details once the guide's focus has rested on it briefly. */
+        fun requestDetails(itemId: String?) {
+            focusDetailsJob?.cancel()
+            if (itemId == null) return
+            focusDetailsJob =
+                viewModelScope.launch {
+                    delay(FOCUS_DETAILS_DELAY_MS)
+                    loadDetails(itemId)
+                }
+        }
+
+        /** Moves the guide grid by [steps] half hours, within the fetched schedule. */
+        fun shiftGuide(steps: Int): Boolean {
+            val current = _state.value
+            val start = current.guideStartMs
+            val next = (current.guideWindowStartMs + steps * HALF_HOUR_MS).coerceIn(start, start + GUIDE_AHEAD_MS - GUIDE_WINDOW_MS)
+            if (next == current.guideWindowStartMs) return false
+            _state.update { it.copy(guideWindowStartMs = next) }
+            return true
+        }
+
+        private suspend fun loadDetails(itemId: String) {
+            if (_details.value.containsKey(itemId) || !detailsLoading.add(itemId)) return
+            try {
+                val loaded = withContext(Dispatchers.IO) { client.details(itemId) }
+                _details.update { old ->
+                    // Keep the most recent entries only; details are cheap to fetch again.
+                    val kept = if (old.size >= MAX_DETAILS) old.entries.drop(old.size - MAX_DETAILS / 2).associate { it.toPair() } else old
+                    kept + (itemId to loaded)
+                }
+            } catch (e: Exception) {
+                // Without details the panel shows what the schedule says.
+            } finally {
+                detailsLoading.remove(itemId)
+            }
+        }
 
         fun showInfo() {
             bannerHideAtMs = client.clock.nowMs() + BANNER_MS
@@ -171,21 +253,20 @@ class CableTvViewModel
 
         fun toggleGuide() {
             val show = !_state.value.showGuide
-            _state.update { it.copy(showGuide = show) }
+            _state.update { it.copy(showGuide = show, showBanner = false) }
             if (show) viewModelScope.launch { refreshGuide() }
         }
 
-        fun closeGuide(): Boolean {
-            if (!_state.value.showGuide) return false
+        fun closeGuide() {
             _state.update { it.copy(showGuide = false) }
-            return true
+            showInfo()
         }
 
         private fun tune(channel: TvChannel) {
             tuneJob?.cancel()
             staticUntilMs = null
             bannerHideAtMs = client.clock.nowMs() + BANNER_MS
-            _state.update { it.copy(channel = channel, digits = "", showBanner = true, showStatic = true) }
+            _state.update { it.copy(channel = channel, digits = "", digitError = false, showBanner = true, showStatic = true) }
             tuneJob =
                 viewModelScope.launch {
                     val player = _player.value ?: return@launch
@@ -254,7 +335,12 @@ class CableTvViewModel
             val channel = navigator.current ?: return
             val entries = Guide.entries(cache.slotsBetween(channel.id, slot.startMs - GUIDE_BACK_MS, slot.endMs + GUIDE_AHEAD_MS))
             val (now, next) = Guide.nowAndNext(entries, client.clock.nowMs())
-            _state.update { it.copy(now = now, next = next) }
+            val upcoming = entries.filter { it.startMs >= (now?.endMs ?: client.clock.nowMs()) && !it.offAir }.take(UPCOMING)
+            _state.update { it.copy(now = now, next = next, upcoming = upcoming) }
+            viewModelScope.launch {
+                now?.itemId?.let { loadDetails(it) }
+                next?.itemId?.let { loadDetails(it) }
+            }
         }
 
         private suspend fun fetch(
@@ -279,7 +365,11 @@ class CableTvViewModel
             if (missing.isNotEmpty()) fetch(missing, now)
             val start = now - (now % HALF_HOUR_MS)
             val rows = channels.map { GuideRow(it, Guide.entries(cache.slotsBetween(it.id, start, start + GUIDE_AHEAD_MS))) }
-            _state.update { it.copy(guide = rows, guideStartMs = start) }
+            _state.update {
+                // Keep the grid where the viewer scrolled it, unless the half hour has moved past it.
+                val window = it.guideWindowStartMs.coerceIn(start, start + GUIDE_AHEAD_MS - GUIDE_WINDOW_MS)
+                it.copy(guide = rows, guideStartMs = start, guideWindowStartMs = window)
+            }
         }
 
         private suspend fun refreshChannels() {
@@ -307,9 +397,25 @@ class CableTvViewModel
                 digitsCommitAtMs?.let { at ->
                     if (now >= at) {
                         digitsCommitAtMs = null
+                        val typed = navigator.pendingDigits
                         val channel = navigator.commitDigits()
-                        if (channel != null) tune(channel) else _state.update { it.copy(digits = "") }
+                        if (channel != null) {
+                            tune(channel)
+                        } else {
+                            // Show the unknown number in red for a moment.
+                            digitErrorUntilMs = now + DIGIT_ERROR_MS
+                            _state.update { it.copy(digits = typed, digitError = true) }
+                        }
                     }
+                }
+
+                if (_state.value.digitError && now >= digitErrorUntilMs) {
+                    _state.update { it.copy(digits = "", digitError = false) }
+                }
+
+                if (_state.value.showGuide && now - lastGuideRefreshMs >= GUIDE_REFRESH_MS) {
+                    lastGuideRefreshMs = now
+                    refreshGuide()
                 }
 
                 if (_state.value.showBanner && now >= bannerHideAtMs && _state.value.digits.isEmpty()) {
@@ -359,7 +465,13 @@ class CableTvViewModel
 
         private companion object {
             const val TICK_MS = 500L
-            const val BANNER_MS = 4_000L
+            const val BANNER_MS = 6_000L
+            const val DIGIT_ERROR_MS = 1_200L
+            const val FOCUS_DETAILS_DELAY_MS = 150L
+            const val MAX_DETAILS = 300
+            const val UPCOMING = 3
+            const val GUIDE_REFRESH_MS = 60_000L
+            const val GUIDE_WINDOW_MS = 2 * 60 * 60_000L
             const val DIGIT_TIMEOUT_MS = 2_000L
             const val DRIFT_CHECK_MS = 10_000L
             const val MAX_DRIFT_MS = 5_000L
@@ -369,7 +481,7 @@ class CableTvViewModel
             const val FETCH_BACK_MS = 60 * 60_000L
             const val FETCH_AHEAD_MS = 6 * 60 * 60_000L
             const val GUIDE_BACK_MS = 60 * 60_000L
-            const val GUIDE_AHEAD_MS = 3 * 60 * 60_000L
+            const val GUIDE_AHEAD_MS = 6 * 60 * 60_000L
             const val HALF_HOUR_MS = 30 * 60_000L
         }
     }

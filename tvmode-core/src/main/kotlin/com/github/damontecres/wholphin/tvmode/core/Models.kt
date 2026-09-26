@@ -39,6 +39,9 @@ data class SlotDto(
     val guideGroup: String,
     val premiere: Boolean? = null,
     val lineup: String? = null,
+    val year: Int? = null,
+    val rating: String? = null,
+    val movie: Boolean? = null,
 )
 
 @Serializable
@@ -127,6 +130,9 @@ data class TvSlot(
     val guideGroup: String,
     val premiere: Boolean,
     val lineup: String?,
+    val year: Int? = null,
+    val rating: String? = null,
+    val movie: Boolean = false,
 ) {
     val durationMs: Long get() = endMs - startMs
 
@@ -168,4 +174,7 @@ internal fun SlotDto.toSlot() =
         guideGroup = guideGroup,
         premiere = premiere == true,
         lineup = lineup,
+        year = year,
+        rating = rating?.takeIf { it.isNotBlank() },
+        movie = movie == true,
     )
