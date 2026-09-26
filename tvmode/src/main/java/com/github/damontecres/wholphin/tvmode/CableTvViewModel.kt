@@ -3,9 +3,11 @@ package com.github.damontecres.wholphin.tvmode
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import com.github.damontecres.wholphin.tvmode.core.CableTvClient
+import com.github.damontecres.wholphin.tvmode.core.ChannelKind
 import com.github.damontecres.wholphin.tvmode.core.ChannelNavigator
 import com.github.damontecres.wholphin.tvmode.core.Guide
 import com.github.damontecres.wholphin.tvmode.core.GuideCache
@@ -18,6 +20,7 @@ import com.github.damontecres.wholphin.tvmode.core.TuneInPlanner
 import com.github.damontecres.wholphin.tvmode.core.TunePlan
 import com.github.damontecres.wholphin.tvmode.core.TvChannel
 import com.github.damontecres.wholphin.tvmode.core.TvSlot
+import com.github.damontecres.wholphin.tvmode.core.WeatherReport
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -76,6 +79,22 @@ data class CableTvUiState(
     val stillWatchingUntilMs: Long = 0,
     /** Nobody answered: playback stopped until a key is pressed. */
     val signedOff: Boolean = false,
+    /** What the TV mode calls itself, set on the server. */
+    val serviceName: String = "Cable TV",
+    /** The slot the player is on (for music and trailer screens). */
+    val playing: TvSlot? = null,
+    /** For a trailer: where the show it advertises airs next. */
+    val trailerTarget: TrailerTarget? = null,
+    /** A weather channel's forecast. */
+    val weather: WeatherReport? = null,
+    val weatherError: String? = null,
+)
+
+/** Where a trailer's movie or series airs next. */
+data class TrailerTarget(
+    val channel: TvChannel,
+    val entry: GuideEntry,
+    val airingNow: Boolean,
 )
 
 /** A programme that started from its beginning at [atMs]. */
@@ -97,6 +116,13 @@ class CableTvViewModel
         private val settingsStore: TvModeSettingsStore,
     ) : ViewModel() {
         val settings: StateFlow<TvModeSettings> = settingsStore.settings
+        val customThemes: StateFlow<List<CustomTheme>> = settingsStore.customThemes
+
+        fun saveTheme(theme: CustomTheme) = settingsStore.saveTheme(theme)
+
+        fun deleteTheme(id: Int) = settingsStore.deleteTheme(id)
+
+        fun nextThemeId(): Int = settingsStore.nextThemeId()
 
         private val _details = MutableStateFlow<Map<String, ItemDetails>>(emptyMap())
 
@@ -133,6 +159,7 @@ class CableTvViewModel
         private var lastGuideRefreshMs = 0L
         private var lastInputMs = 0L
         private var stillWatchingDeadlineMs = 0L
+        private var lastWeatherMs = 0L
         private var tuneJob: Job? = null
 
         private val listener =
@@ -142,6 +169,7 @@ class CableTvViewModel
                     reason: Int,
                 ) {
                     val slot = mediaItem?.slot() ?: return
+                    setPlaying(slot)
                     showNowAndNext(slot)
                     extendQueue(slot)
                     if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) markProgramStart(slot)
@@ -185,6 +213,13 @@ class CableTvViewModel
                 }
                 navigator.update(channels)
                 _state.update { it.copy(digitSlots = channels.maxOf { c -> c.number.length }.coerceIn(1, 5)) }
+                viewModelScope.launch {
+                    runCatching { withContext(Dispatchers.IO) { client.presentation() } }
+                        .getOrNull()
+                        ?.serviceName
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { name -> _state.update { it.copy(serviceName = name) } }
+                }
                 val player = host.createPlayer()
                 player.addListener(listener)
                 player.playWhenReady = true
@@ -233,6 +268,11 @@ class CableTvViewModel
         }
 
         fun exit() = host.exit()
+
+        /** Tunes to the channel airing the show a trailer advertises. */
+        fun tuneToTrailerTarget() {
+            _state.value.trailerTarget?.let { tuneTo(it.channel.id) }
+        }
 
         /** Any key press: resets the sign-off timer and wakes a signed-off TV. */
         fun noteInput() {
@@ -349,6 +389,10 @@ class CableTvViewModel
                     showStatic = true,
                     breakUntilMs = null,
                     paused = false,
+                    playing = null,
+                    trailerTarget = null,
+                    weather = if (channel.kind == ChannelKind.WEATHER) it.weather else null,
+                    weatherError = null,
                 )
             }
             tuneJob =
@@ -358,6 +402,21 @@ class CableTvViewModel
                     if (!cache.covers(channel.id, now, MIN_AHEAD_MS)) {
                         fetch(listOf(channel.id), now)
                     }
+                    when (channel.kind) {
+                        ChannelKind.STREAM -> {
+                            tuneStream(channel, player)
+                            prefetchNeighbours()
+                            return@launch
+                        }
+
+                        ChannelKind.WEATHER -> {
+                            tuneWeather(channel, player)
+                            prefetchNeighbours()
+                            return@launch
+                        }
+
+                        ChannelKind.STANDARD -> {}
+                    }
                     when (val plan = TuneInPlanner.plan(cache.slotsFrom(channel.id, client.clock.nowMs()), client.clock.nowMs())) {
                         is TunePlan.Play -> {
                             queued = plan.items
@@ -365,6 +424,7 @@ class CableTvViewModel
                             player.prepare()
                             player.play()
                             val first = plan.items.first().slot
+                            setPlaying(first)
                             showNowAndNext(first)
                             // Tuned in right as a programme began: treat it like a start.
                             if (client.clock.nowMs() - first.startMs < JUST_STARTED_MS) markProgramStart(first)
@@ -386,6 +446,78 @@ class CableTvViewModel
                     }
                     prefetchNeighbours()
                 }
+        }
+
+        /** An outside stream: play the URL as is; it's live, so there's no offset or queue. */
+        private fun tuneStream(
+            channel: TvChannel,
+            player: Player,
+        ) {
+            val slot = cache.slotsFrom(channel.id, client.clock.nowMs()).firstOrNull { it.kind == SlotKind.STREAM && it.url != null }
+            if (slot == null) {
+                staticUntilMs = client.clock.nowMs() + 5_000
+                return
+            }
+            val url = slot.url!!
+            queued = emptyList()
+            val item =
+                MediaItem
+                    .Builder()
+                    .setUri(url)
+                    .setMediaId(slot.id)
+                    .setTag(slot)
+                    .apply { if (url.contains(".m3u8", ignoreCase = true)) setMimeType(MimeTypes.APPLICATION_M3U8) }
+                    .build()
+            player.setMediaItem(item)
+            player.prepare()
+            player.play()
+            setPlaying(slot)
+            showNowAndNext(slot)
+        }
+
+        /** A weather channel: nothing to play; the screen draws the forecast. */
+        private suspend fun tuneWeather(
+            channel: TvChannel,
+            player: Player,
+        ) {
+            queued = emptyList()
+            player.stop()
+            player.clearMediaItems()
+            _state.update { it.copy(showStatic = false) }
+            cache.slotsFrom(channel.id, client.clock.nowMs()).firstOrNull()?.let { showNowAndNext(it) }
+            loadWeather(channel)
+        }
+
+        private suspend fun loadWeather(channel: TvChannel) {
+            lastWeatherMs = client.clock.nowMs()
+            try {
+                val report = withContext(Dispatchers.IO) { client.weather(channel.id) }
+                if (navigator.current?.id == channel.id) _state.update { it.copy(weather = report, weatherError = null) }
+            } catch (e: Exception) {
+                if (navigator.current?.id == channel.id && _state.value.weather == null) {
+                    _state.update { it.copy(weatherError = "The forecast isn't available right now.") }
+                }
+            }
+        }
+
+        private fun setPlaying(slot: TvSlot) {
+            _state.update { it.copy(playing = slot, trailerTarget = trailerTarget(slot, it.guide)) }
+        }
+
+        /** Where the show a trailer advertises airs next, on another channel. */
+        private fun trailerTarget(
+            slot: TvSlot?,
+            guide: List<GuideRow>,
+        ): TrailerTarget? {
+            val owner = slot?.ownerId?.takeIf { slot.trailer } ?: return null
+            val now = client.clock.nowMs()
+            return guide
+                .filter { it.channel.id != navigator.current?.id }
+                .mapNotNull { row ->
+                    row.entries
+                        .firstOrNull { it.endMs > now && (it.itemId == owner || it.seriesId == owner) }
+                        ?.let { TrailerTarget(row.channel, it, now >= it.startMs) }
+                }.minByOrNull { it.entry.startMs }
         }
 
         /** Loads the schedules of the channels either side, so surfing up or down starts without a network wait. */
@@ -421,7 +553,7 @@ class CableTvViewModel
         private fun toMediaItem(item: PlayItem): MediaItem =
             MediaItem
                 .Builder()
-                .setUri(host.streamUrl(item.slot.itemId!!, item.slot.mediaSourceId))
+                .setUri(host.streamUrl(item.slot.itemId!!, item.slot.mediaSourceId, item.slot.audio))
                 .setMediaId(item.slot.id)
                 .setClippingConfiguration(
                     MediaItem.ClippingConfiguration
@@ -502,7 +634,7 @@ class CableTvViewModel
             _state.update {
                 // Keep the grid where the viewer scrolled it, unless the half hour has moved past it.
                 val window = it.guideWindowStartMs.coerceIn(start, start + GUIDE_AHEAD_MS - GUIDE_WINDOW_MS)
-                it.copy(guide = rows, guideStartMs = start, guideWindowStartMs = window)
+                it.copy(guide = rows, guideStartMs = start, guideWindowStartMs = window, trailerTarget = trailerTarget(it.playing, rows))
             }
         }
 
@@ -571,6 +703,7 @@ class CableTvViewModel
                 }
 
                 val channel = navigator.current ?: continue
+                if (channel.kind == ChannelKind.WEATHER && now - lastWeatherMs >= WEATHER_REFRESH_MS) loadWeather(channel)
                 if (!cache.covers(channel.id, now, REFRESH_WHEN_LESS_THAN_MS)) {
                     fetch(listOf(channel.id), now)
                 }
@@ -614,6 +747,7 @@ class CableTvViewModel
             val player = _player.value ?: return
             if (player.playbackState != Player.STATE_READY || !player.isPlaying) return
             val slot = player.currentMediaItem?.slot() ?: return
+            if (slot.kind == SlotKind.STREAM) return
             if (abs(TuneInPlanner.drift(slot, player.currentPosition, now)) > MAX_DRIFT_MS) retune()
         }
 
@@ -630,6 +764,7 @@ class CableTvViewModel
             /** How often [CableTvUiState.nowMs] moves. */
             const val COARSE_CLOCK_MS = 30_000L
             private const val NEIGHBOURS = 2
+            private const val WEATHER_REFRESH_MS = 10 * 60_000L
             private const val JUST_STARTED_MS = 3_000L
             private const val STILL_WATCHING_MS = 60_000L
             private val SLEEP_STEPS = listOf(15, 30, 60, 90, 120)

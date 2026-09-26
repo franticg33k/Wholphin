@@ -124,6 +124,18 @@ data class TvModeSettings(
     val autoSignOffHours: Int = 4,
     val accent: AccentChoice = AccentChoice.THEME,
     val focus: AccentChoice = AccentChoice.THEME,
+    /** A custom theme's id, or -1 for [theme]. */
+    val customTheme: Int = -1,
+    val uiSounds: Boolean = true,
+)
+
+/** A theme made in the theme editor: a built-in theme with some colour roles replaced. */
+data class CustomTheme(
+    val id: Int,
+    val name: String,
+    val base: TvThemeId,
+    /** Colour role key (see [com.github.damontecres.wholphin.tvmode.ui.ThemeRoles]) to ARGB. */
+    val colors: Map<String, Long>,
 )
 
 /** TV mode's own settings, kept on the device (they're about the look of this TV, not the server). */
@@ -136,6 +148,56 @@ class TvModeSettingsStore
         private val prefs = context.getSharedPreferences("cable_tv_mode", Context.MODE_PRIVATE)
         private val _settings = MutableStateFlow(load())
         val settings: StateFlow<TvModeSettings> = _settings.asStateFlow()
+
+        private val _customThemes = MutableStateFlow(loadThemes())
+        val customThemes: StateFlow<List<CustomTheme>> = _customThemes.asStateFlow()
+
+        /** Adds or replaces a custom theme. */
+        fun saveTheme(theme: CustomTheme) {
+            val next = _customThemes.value.filter { it.id != theme.id } + theme
+            _customThemes.value = next.sortedBy { it.id }
+            persistThemes()
+        }
+
+        fun deleteTheme(id: Int) {
+            _customThemes.value = _customThemes.value.filter { it.id != id }
+            persistThemes()
+            if (_settings.value.customTheme == id) update { it.copy(customTheme = -1) }
+        }
+
+        fun nextThemeId(): Int = (_customThemes.value.maxOfOrNull { it.id } ?: 0) + 1
+
+        private fun persistThemes() {
+            val array = org.json.JSONArray()
+            _customThemes.value.forEach { theme ->
+                val colors = org.json.JSONObject()
+                theme.colors.forEach { (k, v) -> colors.put(k, v) }
+                array.put(
+                    org.json
+                        .JSONObject()
+                        .put("id", theme.id)
+                        .put("name", theme.name)
+                        .put("base", theme.base.name)
+                        .put("colors", colors),
+                )
+            }
+            prefs.edit().putString("customThemes", array.toString()).apply()
+        }
+
+        private fun loadThemes(): List<CustomTheme> =
+            runCatching {
+                val array = org.json.JSONArray(prefs.getString("customThemes", "[]"))
+                (0 until array.length()).map { i ->
+                    val o = array.getJSONObject(i)
+                    val colors = o.optJSONObject("colors")
+                    CustomTheme(
+                        id = o.getInt("id"),
+                        name = o.optString("name", "Custom"),
+                        base = enumOr(o.optString("base"), TvThemeId.RETRO),
+                        colors = colors?.keys()?.asSequence()?.associateWith { colors.getLong(it) } ?: emptyMap(),
+                    )
+                }
+            }.getOrDefault(emptyList())
 
         fun update(transform: (TvModeSettings) -> TvModeSettings) {
             val next = transform(_settings.value)
@@ -166,6 +228,8 @@ class TvModeSettingsStore
                 .putInt("autoSignOffHours", next.autoSignOffHours)
                 .putString("accent", next.accent.name)
                 .putString("focus", next.focus.name)
+                .putInt("customTheme", next.customTheme)
+                .putBoolean("uiSounds", next.uiSounds)
                 .apply()
         }
 
@@ -196,6 +260,8 @@ class TvModeSettingsStore
                 autoSignOffHours = prefs.getInt("autoSignOffHours", d.autoSignOffHours),
                 accent = enumOr(prefs.getString("accent", null), d.accent),
                 focus = enumOr(prefs.getString("focus", null), d.focus),
+                customTheme = prefs.getInt("customTheme", d.customTheme),
+                uiSounds = prefs.getBoolean("uiSounds", d.uiSounds),
             )
         }
 

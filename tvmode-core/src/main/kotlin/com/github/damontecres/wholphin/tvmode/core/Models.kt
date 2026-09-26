@@ -15,6 +15,7 @@ data class ChannelDto(
     val scheduleVersion: String,
     val poolSize: Int = 0,
     val category: String? = null,
+    val kind: String? = null,
 )
 
 @Serializable
@@ -42,6 +43,13 @@ data class SlotDto(
     val year: Int? = null,
     val rating: String? = null,
     val movie: Boolean? = null,
+    val url: String? = null,
+    val audio: Boolean? = null,
+    val artist: String? = null,
+    val album: String? = null,
+    val trailer: Boolean? = null,
+    val ownerId: String? = null,
+    val seriesId: String? = null,
 )
 
 @Serializable
@@ -75,6 +83,9 @@ data class GuideProgramDto(
     val year: Int? = null,
     val rating: String? = null,
     val movie: Boolean? = null,
+    val kind: String? = null,
+    val seriesId: String? = null,
+    val artist: String? = null,
 )
 
 @Serializable
@@ -102,11 +113,14 @@ internal fun GuideProgramDto.toEntry() =
         endMs = parseTime(end),
         premiere = premiere == true,
         lineup = lineup,
-        offAir = itemId == null,
+        offAir = itemId == null && kind == null,
         itemId = itemId,
         year = year,
         rating = rating?.takeIf { it.isNotBlank() },
         movie = movie == true,
+        kind = kind,
+        seriesId = seriesId,
+        artist = artist,
     )
 
 @Serializable
@@ -147,6 +161,18 @@ enum class SlotKind {
     }
 }
 
+/** What a channel airs. */
+enum class ChannelKind {
+    STANDARD,
+    STREAM,
+    WEATHER,
+    ;
+
+    companion object {
+        fun parse(value: String?): ChannelKind = entries.firstOrNull { it.name.equals(value, ignoreCase = true) } ?: STANDARD
+    }
+}
+
 /** A channel as the TV mode uses it. */
 data class TvChannel(
     val id: String,
@@ -156,6 +182,7 @@ data class TvChannel(
     val scheduleVersion: String,
     val poolSize: Int,
     val category: String? = null,
+    val kind: ChannelKind = ChannelKind.STANDARD,
 )
 
 /**
@@ -181,6 +208,16 @@ data class TvSlot(
     val year: Int? = null,
     val rating: String? = null,
     val movie: Boolean = false,
+    /** For a stream slot, the URL to play. */
+    val url: String? = null,
+    /** Music: play the audio and show the visualiser. */
+    val audio: Boolean = false,
+    val artist: String? = null,
+    val album: String? = null,
+    val trailer: Boolean = false,
+    /** The movie or series a trailer advertises. */
+    val ownerId: String? = null,
+    val seriesId: String? = null,
 ) {
     val durationMs: Long get() = endMs - startMs
 
@@ -204,6 +241,7 @@ internal fun ChannelDto.toChannel() =
         category?.takeIf {
             it.isNotBlank()
         },
+        ChannelKind.parse(kind),
     )
 
 internal fun SlotDto.toSlot() =
@@ -225,4 +263,11 @@ internal fun SlotDto.toSlot() =
         year = year,
         rating = rating?.takeIf { it.isNotBlank() },
         movie = movie == true,
+        url = url,
+        audio = audio == true,
+        artist = artist,
+        album = album,
+        trailer = trailer == true,
+        ownerId = ownerId,
+        seriesId = seriesId,
     )

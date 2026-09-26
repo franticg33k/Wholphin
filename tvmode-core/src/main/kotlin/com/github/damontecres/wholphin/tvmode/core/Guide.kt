@@ -15,6 +15,10 @@ data class GuideEntry(
     val year: Int? = null,
     val rating: String? = null,
     val movie: Boolean = false,
+    /** "stream", "generated" (weather), "music" or "trailers" for entries that aren't one library item. */
+    val kind: String? = null,
+    val seriesId: String? = null,
+    val artist: String? = null,
 ) {
     /** What kind of programme this is, for guide colours. */
     val contentType: ContentType
@@ -53,11 +57,19 @@ object Guide {
                     endMs = group.last().endMs,
                     premiere = group.any { it.premiere },
                     lineup = group.firstNotNullOfOrNull { it.lineup },
-                    offAir = program == null && group.none { it.isPlayable },
+                    offAir = program == null && group.none { it.isPlayable || it.kind == SlotKind.STREAM || it.kind == SlotKind.GENERATED },
                     itemId = program?.itemId,
                     year = program?.year,
                     rating = program?.rating,
                     movie = program?.movie == true,
+                    kind =
+                        when (group.first().kind) {
+                            SlotKind.STREAM -> "stream"
+                            SlotKind.GENERATED -> "generated"
+                            else -> null
+                        },
+                    seriesId = program?.seriesId,
+                    artist = program?.artist,
                 )
             group = mutableListOf()
         }
