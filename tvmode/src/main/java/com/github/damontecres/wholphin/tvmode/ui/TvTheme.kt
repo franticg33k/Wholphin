@@ -36,6 +36,22 @@ data class TvTheme(
     val font: FontFamily,
     val roundedCells: Boolean = true,
 ) {
+    /** This theme with the viewer's accent and focus colours, when they chose any. */
+    fun customized(
+        accent: Long?,
+        focus: Long?,
+    ): TvTheme {
+        var theme = this
+        if (accent != null) theme = theme.copy(accent = Color(accent), nowLine = Color(accent))
+        if (focus != null) {
+            val color = Color(focus)
+            // Dark text on light focus colours, white on dark ones.
+            val light = color.red * 0.299f + color.green * 0.587f + color.blue * 0.114f > 0.6f
+            theme = theme.copy(focusedCell = color, focusedText = if (light) Color(0xFF14202C) else Color.White)
+        }
+        return theme
+    }
+
     fun cellColor(
         type: ContentType,
         index: Int,

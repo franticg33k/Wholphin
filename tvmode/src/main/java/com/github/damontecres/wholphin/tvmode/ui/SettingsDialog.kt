@@ -98,11 +98,76 @@ fun SettingsDialog(
                 }
                 item { SettingRow("24-hour clock", onOff(settings.clock24h)) { onChange { it.copy(clock24h = !it.clock24h) } } }
                 item { SettingRow("Media info bubbles", onOff(settings.mediaInfo)) { onChange { it.copy(mediaInfo = !it.mediaInfo) } } }
+                item { SettingRow("Accent colour", settings.accent.label) { onChange { it.copy(accent = it.accent.next()) } } }
+                item { SettingRow("Focus colour", settings.focus.label) { onChange { it.copy(focus = it.focus.next()) } } }
+                item {
+                    SettingRow(
+                        "Channel logo on screen",
+                        settings.watermark.label,
+                    ) { onChange { it.copy(watermark = it.watermark.next()) } }
+                }
+                item {
+                    SettingRow(
+                        "Logo position",
+                        settings.watermarkCorner.label,
+                    ) { onChange { it.copy(watermarkCorner = it.watermarkCorner.next()) } }
+                }
+                item {
+                    SettingRow("Logo opacity", "${settings.watermarkOpacity}%") {
+                        onChange { it.copy(watermarkOpacity = OPACITIES[(OPACITIES.indexOf(it.watermarkOpacity) + 1) % OPACITIES.size]) }
+                    }
+                }
+                item {
+                    SettingRow(
+                        "Rating badge when a programme starts",
+                        onOff(settings.ratingBug),
+                    ) { onChange { it.copy(ratingBug = !it.ratingBug) } }
+                }
+                item {
+                    SettingRow("\"Feature presentation\" before movies", onOff(settings.featurePresentation)) {
+                        onChange { it.copy(featurePresentation = !it.featurePresentation) }
+                    }
+                }
+                item { SettingRow("Up next card", onOff(settings.upNextCard)) { onChange { it.copy(upNextCard = !it.upNextCard) } } }
+                item {
+                    SettingRow(
+                        "Break screen between programmes",
+                        onOff(settings.breakScreens),
+                    ) { onChange { it.copy(breakScreens = !it.breakScreens) } }
+                }
+                item { SettingRow("Picture", settings.displayMode.label) { onChange { it.copy(displayMode = it.displayMode.next()) } } }
+                item { SettingRow("Scanlines", settings.scanlines.label) { onChange { it.copy(scanlines = it.scanlines.next()) } } }
+                item { SettingRow("CRT corner shading", onOff(settings.vignette)) { onChange { it.copy(vignette = !it.vignette) } } }
+                item {
+                    SettingRow(
+                        "Sign off when idle",
+                        if (settings.autoSignOffHours ==
+                            0
+                        ) {
+                            "Never"
+                        } else {
+                            "After ${settings.autoSignOffHours} h"
+                        },
+                    ) {
+                        onChange {
+                            it.copy(
+                                autoSignOffHours =
+                                    SIGN_OFF_HOURS[
+                                        (SIGN_OFF_HOURS.indexOf(it.autoSignOffHours) + 1) %
+                                            SIGN_OFF_HOURS.size,
+                                    ],
+                            )
+                        }
+                    }
+                }
             }
         }
     }
     LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
 }
+
+private val OPACITIES = listOf(40, 55, 70, 85, 100)
+private val SIGN_OFF_HOURS = listOf(0, 2, 3, 4, 6, 8)
 
 private fun onOff(value: Boolean) = if (value) "On" else "Off"
 

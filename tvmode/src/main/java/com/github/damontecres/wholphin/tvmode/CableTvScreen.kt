@@ -33,23 +33,35 @@ import androidx.media3.ui.compose.PlayerSurface
 import androidx.media3.ui.compose.SURFACE_TYPE_SURFACE_VIEW
 import androidx.media3.ui.compose.modifiers.resizeWithContentScale
 import androidx.media3.ui.compose.state.rememberPresentationState
+import com.github.damontecres.wholphin.tvmode.ui.BreakCard
 import com.github.damontecres.wholphin.tvmode.ui.ClassicOverlay
+import com.github.damontecres.wholphin.tvmode.ui.CrtOverlay
 import com.github.damontecres.wholphin.tvmode.ui.DigitOverlay
+import com.github.damontecres.wholphin.tvmode.ui.FeaturePresentationCard
+import com.github.damontecres.wholphin.tvmode.ui.FourThreeFrame
 import com.github.damontecres.wholphin.tvmode.ui.GuideModel
 import com.github.damontecres.wholphin.tvmode.ui.ImageUrls
 import com.github.damontecres.wholphin.tvmode.ui.LineupOverlay
 import com.github.damontecres.wholphin.tvmode.ui.LocalTvTheme
 import com.github.damontecres.wholphin.tvmode.ui.OverlayData
+import com.github.damontecres.wholphin.tvmode.ui.PausedScreensaver
+import com.github.damontecres.wholphin.tvmode.ui.RatingBug
 import com.github.damontecres.wholphin.tvmode.ui.RetroGuide
+import com.github.damontecres.wholphin.tvmode.ui.SatelliteOverlay
+import com.github.damontecres.wholphin.tvmode.ui.SearchSheet
 import com.github.damontecres.wholphin.tvmode.ui.SettingsDialog
+import com.github.damontecres.wholphin.tvmode.ui.SignedOffCard
+import com.github.damontecres.wholphin.tvmode.ui.StillWatchingPrompt
 import com.github.damontecres.wholphin.tvmode.ui.TuningSplash
 import com.github.damontecres.wholphin.tvmode.ui.TvText
 import com.github.damontecres.wholphin.tvmode.ui.TvTheme
+import com.github.damontecres.wholphin.tvmode.ui.UpNextCard
+import com.github.damontecres.wholphin.tvmode.ui.Watermark
 
 /**
  * TV mode. Full screen: Up/Down or Channel +/- change channel, digits tune by number, OK or Back opens the guide,
- * Left/Right/Info show the overlay, a long press on Back returns to the previous channel. In the guide, OK on the
- * programme airing now tunes to it and Back leaves TV mode.
+ * Left/Right/Info show the overlay, Play/Pause pauses, a long press on Back returns to the previous channel. In the
+ * guide, OK on the programme airing now tunes to it and Back leaves TV mode.
  */
 @Composable
 fun CableTvScreen(
@@ -65,32 +77,51 @@ fun CableTvScreen(
     val focusRequester = remember { FocusRequester() }
     var guideCategory by remember { mutableStateOf<String?>(null) }
     var showSettings by remember { mutableStateOf(false) }
+    var showSearch by remember { mutableStateOf(false) }
     val backState = remember { BackPress() }
     val images = remember(viewModel) { ImageUrls(viewModel::imageUrl) }
+    val theme =
+        remember(settings.theme, settings.accent, settings.focus) {
+            TvTheme.of(settings.theme).customized(settings.accent.argb, settings.focus.argb)
+        }
 
     // One video surface, moved between full screen and the guide's preview window without being recreated.
     val video =
         remember(player) {
-            player?.let { p -> movableContentOf { VideoSurface(p) } }
+            player?.let { p -> movableContentOf { scale: ContentScale -> VideoSurface(p, scale) } }
         }
-    val picture: @Composable (Boolean) -> Unit = { compact ->
+    val picture: @Composable (Boolean, ContentScale) -> Unit = { compact, scale ->
         Box(Modifier.fillMaxSize()) {
-            video?.invoke()
+            video?.invoke(scale)
+            val breakUntil = state.breakUntilMs
             if (state.showStatic || state.loading) {
-                TuningSplash(settings.tuningStyle, state.channel, settings.tuningLogo, compact, Modifier.fillMaxSize())
+                if (breakUntil != null && settings.breakScreens && !state.loading) {
+                    BreakCard(state.channel, breakUntil, state.next, clock, Modifier.fillMaxSize())
+                } else {
+                    TuningSplash(settings.tuningStyle, state.channel, settings.tuningLogo, compact, Modifier.fillMaxSize())
+                }
             }
         }
     }
 
-    CompositionLocalProvider(LocalTvTheme provides TvTheme.of(settings.theme)) {
+    CompositionLocalProvider(LocalTvTheme provides theme) {
         Box(
             modifier =
                 modifier
                     .fillMaxSize()
                     .background(Color.Black)
                     .focusRequester(focusRequester)
-                    .onKeyEvent { handleKey(it, viewModel, state.showGuide, backState) }
-                    .focusable(),
+                    .onKeyEvent {
+                        handleKey(it, viewModel, state, backState) {
+                            // Back closes the search sheet before anything else.
+                            if (showSearch) {
+                                showSearch = false
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                    }.focusable(),
         ) {
             if (state.showGuide) {
                 val categories = state.guide.mapNotNull { it.channel.category }.distinct()
@@ -115,35 +146,28 @@ fun CableTvScreen(
                             onFullscreen = viewModel::closeGuide,
                             onSettings = { showSettings = true },
                             onExit = viewModel::exit,
+                            onSearch = { showSearch = true },
+                            sleepLabel = sleepLabel(state.sleepAtMs, state.nowMs),
+                            onSleep = viewModel::cycleSleep,
                         ),
-                    preview = { picture(true) },
+                    preview = { picture(true, ContentScale.Fit) },
                 )
-            } else {
-                picture(false)
-                if (state.showBanner) {
-                    val data =
-                        OverlayData(
-                            channel = state.channel,
-                            now = state.now,
-                            next = state.next,
-                            upcoming = state.upcoming,
-                            details = details,
-                            nowMs = state.nowMs,
-                            clock = clock,
-                            clock24h = settings.clock24h,
-                            showMediaInfo = settings.mediaInfo,
-                            images = images,
-                        )
-                    when (settings.overlayStyle) {
-                        OverlayStyle.CLASSIC -> ClassicOverlay(data)
-                        OverlayStyle.LINEUP -> LineupOverlay(data)
-                    }
+                if (showSearch) {
+                    SearchSheet(state.guide, state.nowMs, onTune = {
+                        showSearch = false
+                        viewModel.tuneTo(it)
+                    })
                 }
+            } else {
+                FullScreen(state, settings, clock, details, images, picture)
             }
 
             if (state.digits.isNotEmpty()) {
                 DigitOverlay(state.digits, state.digitSlots, state.digitError, Modifier.align(Alignment.TopStart).padding(32.dp))
             }
+            if (state.paused) PausedScreensaver(state.channel)
+            if (state.stillWatching) StillWatchingPrompt(state.stillWatchingUntilMs, clock)
+            if (state.signedOff) SignedOffCard(state.channel)
 
             state.error?.let {
                 TvText(it, color = Color.White, maxLines = 4, modifier = Modifier.align(Alignment.Center).padding(32.dp))
@@ -157,18 +181,73 @@ fun CableTvScreen(
 
     LaunchedEffect(state.showGuide, showSettings) {
         if (!state.showGuide && !showSettings) runCatching { focusRequester.requestFocus() }
+        if (!state.showGuide) showSearch = false
     }
 }
 
 @Composable
-private fun VideoSurface(player: Player) {
+private fun FullScreen(
+    state: CableTvUiState,
+    settings: TvModeSettings,
+    clock: androidx.compose.runtime.State<Long>,
+    details: androidx.compose.runtime.State<Map<String, com.github.damontecres.wholphin.tvmode.core.ItemDetails>>,
+    images: ImageUrls,
+    picture: @Composable (Boolean, ContentScale) -> Unit,
+) {
+    when (settings.displayMode) {
+        DisplayMode.ORIGINAL -> picture(false, ContentScale.Fit)
+        DisplayMode.CROP_4_3 -> FourThreeFrame(bezel = false) { picture(false, ContentScale.Crop) }
+        DisplayMode.LETTERBOX_4_3 -> FourThreeFrame(bezel = false) { picture(false, ContentScale.Fit) }
+        DisplayMode.BEZEL -> FourThreeFrame(bezel = true) { picture(false, ContentScale.Crop) }
+    }
+    CrtOverlay(settings.scanlines, settings.vignette && settings.displayMode != DisplayMode.BEZEL)
+
+    val playing = !state.showStatic && !state.loading
+    if (playing) {
+        Watermark(state.channel, settings.watermark, settings.watermarkCorner, settings.watermarkOpacity, clock)
+        if (settings.featurePresentation) FeaturePresentationCard(state.programStart, clock)
+        if (settings.ratingBug) RatingBug(state.programStart, clock)
+        if (settings.upNextCard && !state.showBanner) UpNextCard(state.now, state.next, clock, settings.clock24h)
+    }
+    if (state.showBanner) {
+        val data =
+            OverlayData(
+                channel = state.channel,
+                now = state.now,
+                next = state.next,
+                upcoming = state.upcoming,
+                details = details,
+                nowMs = state.nowMs,
+                clock = clock,
+                clock24h = settings.clock24h,
+                showMediaInfo = settings.mediaInfo,
+                images = images,
+            )
+        when (settings.overlayStyle) {
+            OverlayStyle.CLASSIC -> ClassicOverlay(data)
+            OverlayStyle.LINEUP -> LineupOverlay(data)
+            OverlayStyle.SATELLITE -> SatelliteOverlay(data)
+        }
+    }
+}
+
+private fun sleepLabel(
+    sleepAtMs: Long?,
+    nowMs: Long,
+): String = sleepAtMs?.let { "SLEEP ${((it - nowMs) / 60_000).coerceAtLeast(1)}m" } ?: "SLEEP OFF"
+
+@Composable
+private fun VideoSurface(
+    player: Player,
+    scale: ContentScale,
+) {
     // Letterbox or pillarbox to the video's own aspect ratio (pixel aspect included) instead of stretching.
     val presentation = rememberPresentationState(player)
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         PlayerSurface(
             player = player,
             surfaceType = SURFACE_TYPE_SURFACE_VIEW,
-            modifier = Modifier.resizeWithContentScale(ContentScale.Fit, presentation.videoSizeDp),
+            modifier = Modifier.resizeWithContentScale(scale, presentation.videoSizeDp),
         )
     }
 }
@@ -181,27 +260,39 @@ private class BackPress {
 private fun handleKey(
     event: KeyEvent,
     viewModel: CableTvViewModel,
-    guideOpen: Boolean,
+    state: CableTvUiState,
     back: BackPress,
+    closeOverlay: () -> Boolean,
 ): Boolean {
+    if (event.type == KeyEventType.KeyDown) viewModel.noteInput()
+    // A signed-off TV wakes on any key (noteInput re-tunes); swallow the press.
+    if (state.signedOff || state.stillWatching) return true
+    if (state.paused) {
+        if (event.type == KeyEventType.KeyUp) viewModel.togglePause()
+        return true
+    }
     if (event.key == Key.Back) {
         when (event.type) {
             KeyEventType.KeyDown -> {
-                if (event.nativeKeyEvent.repeatCount > 0 && !back.longPressHandled && !guideOpen) {
+                if (event.nativeKeyEvent.repeatCount > 0 && !back.longPressHandled && !state.showGuide) {
                     back.longPressHandled = true
                     viewModel.lastChannel()
                 }
             }
 
             KeyEventType.KeyUp -> {
-                if (back.longPressHandled) back.longPressHandled = false else viewModel.back()
+                if (back.longPressHandled) {
+                    back.longPressHandled = false
+                } else if (!closeOverlay()) {
+                    viewModel.back()
+                }
             }
         }
         return true
     }
     if (event.type != KeyEventType.KeyDown) return false
     // With the guide open, let focus move through it; only the guide keys are ours.
-    if (guideOpen) {
+    if (state.showGuide) {
         return when (event.key) {
             Key.Guide, Key.Menu -> {
                 viewModel.toggleGuide()
@@ -235,6 +326,11 @@ private fun handleKey(
 
         Key.Info, Key.DirectionLeft, Key.DirectionRight -> {
             viewModel.showInfo()
+            true
+        }
+
+        Key.MediaPlayPause, Key.MediaPause -> {
+            viewModel.togglePause()
             true
         }
 

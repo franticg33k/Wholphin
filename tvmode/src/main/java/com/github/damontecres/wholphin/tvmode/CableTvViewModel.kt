@@ -13,6 +13,7 @@ import com.github.damontecres.wholphin.tvmode.core.GuideEntry
 import com.github.damontecres.wholphin.tvmode.core.ItemDetails
 import com.github.damontecres.wholphin.tvmode.core.PlayItem
 import com.github.damontecres.wholphin.tvmode.core.ScheduleCache
+import com.github.damontecres.wholphin.tvmode.core.SlotKind
 import com.github.damontecres.wholphin.tvmode.core.TuneInPlanner
 import com.github.damontecres.wholphin.tvmode.core.TunePlan
 import com.github.damontecres.wholphin.tvmode.core.TvChannel
@@ -62,6 +63,25 @@ data class CableTvUiState(
      * cells, "min left") don't recompose every tick. Use [CableTvViewModel.clock] for a running clock.
      */
     val nowMs: Long = 0,
+    /** The schedule has a gap (filler) until then: a break screen instead of static. */
+    val breakUntilMs: Long? = null,
+    /** A programme just started from its beginning: for the rating badge and the feature presentation card. */
+    val programStart: ProgramStart? = null,
+    /** Playback paused by the viewer; resuming rejoins the live schedule. */
+    val paused: Boolean = false,
+    /** Sleep timer: TV mode closes then. */
+    val sleepAtMs: Long? = null,
+    /** No key pressed for a long time: asking whether anyone's watching. */
+    val stillWatching: Boolean = false,
+    val stillWatchingUntilMs: Long = 0,
+    /** Nobody answered: playback stopped until a key is pressed. */
+    val signedOff: Boolean = false,
+)
+
+/** A programme that started from its beginning at [atMs]. */
+data class ProgramStart(
+    val entry: GuideEntry,
+    val atMs: Long,
 )
 
 /**
@@ -111,6 +131,8 @@ class CableTvViewModel
         private var lastDriftCheckMs = 0L
         private var lastChannelRefreshMs = 0L
         private var lastGuideRefreshMs = 0L
+        private var lastInputMs = 0L
+        private var stillWatchingDeadlineMs = 0L
         private var tuneJob: Job? = null
 
         private val listener =
@@ -122,6 +144,7 @@ class CableTvViewModel
                     val slot = mediaItem?.slot() ?: return
                     showNowAndNext(slot)
                     extendQueue(slot)
+                    if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) markProgramStart(slot)
                 }
 
                 override fun onRenderedFirstFrame() {
@@ -131,7 +154,7 @@ class CableTvViewModel
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     when (playbackState) {
                         // The queue ran out: filler follows, or the schedule moved on. Work out what airs now.
-                        Player.STATE_ENDED -> retune()
+                        Player.STATE_ENDED -> if (!_state.value.signedOff && !_state.value.paused) retune()
 
                         Player.STATE_BUFFERING -> _state.update { it.copy(showStatic = true) }
 
@@ -211,6 +234,36 @@ class CableTvViewModel
 
         fun exit() = host.exit()
 
+        /** Any key press: resets the sign-off timer and wakes a signed-off TV. */
+        fun noteInput() {
+            lastInputMs = client.clock.nowMs()
+            if (_state.value.stillWatching) _state.update { it.copy(stillWatching = false) }
+            if (_state.value.signedOff) {
+                _state.update { it.copy(signedOff = false) }
+                retune()
+            }
+        }
+
+        /** Pauses; resuming rejoins what's airing now rather than carrying on from the pause. */
+        fun togglePause() {
+            val player = _player.value ?: return
+            if (_state.value.paused) {
+                _state.update { it.copy(paused = false) }
+                retune()
+            } else {
+                player.pause()
+                _state.update { it.copy(paused = true, showBanner = false) }
+            }
+        }
+
+        /** Steps the sleep timer through off, 15, 30, 60, 90 and 120 minutes. */
+        fun cycleSleep() {
+            val now = client.clock.nowMs()
+            val current = _state.value.sleepAtMs?.let { ((it - now) / 60_000).toInt() } ?: 0
+            val next = SLEEP_STEPS.firstOrNull { it > current + 1 }
+            _state.update { it.copy(sleepAtMs = next?.let { minutes -> now + minutes * 60_000L }) }
+        }
+
         fun imageUrl(
             itemId: String,
             type: String,
@@ -277,11 +330,27 @@ class CableTvViewModel
             showInfo()
         }
 
+        private fun markProgramStart(slot: TvSlot) {
+            if (slot.kind != SlotKind.PROGRAM || slot.inPointMs != 0L) return
+            val entry = _state.value.now?.takeIf { it.guideGroup == slot.guideGroup } ?: return
+            _state.update { it.copy(programStart = ProgramStart(entry, client.clock.nowMs())) }
+        }
+
         private fun tune(channel: TvChannel) {
             tuneJob?.cancel()
             staticUntilMs = null
             bannerHideAtMs = client.clock.nowMs() + BANNER_MS
-            _state.update { it.copy(channel = channel, digits = "", digitError = false, showBanner = true, showStatic = true) }
+            _state.update {
+                it.copy(
+                    channel = channel,
+                    digits = "",
+                    digitError = false,
+                    showBanner = true,
+                    showStatic = true,
+                    breakUntilMs = null,
+                    paused = false,
+                )
+            }
             tuneJob =
                 viewModelScope.launch {
                     val player = _player.value ?: return@launch
@@ -295,7 +364,10 @@ class CableTvViewModel
                             player.setMediaItems(plan.items.map(::toMediaItem), 0, plan.startPositionMs)
                             player.prepare()
                             player.play()
-                            showNowAndNext(plan.items.first().slot)
+                            val first = plan.items.first().slot
+                            showNowAndNext(first)
+                            // Tuned in right as a programme began: treat it like a start.
+                            if (client.clock.nowMs() - first.startMs < JUST_STARTED_MS) markProgramStart(first)
                         }
 
                         is TunePlan.Static -> {
@@ -304,7 +376,7 @@ class CableTvViewModel
                             player.clearMediaItems()
                             staticUntilMs = plan.untilMs
                             showNowAndNext(plan.slot)
-                            _state.update { it.copy(showStatic = true) }
+                            _state.update { it.copy(showStatic = true, breakUntilMs = plan.untilMs) }
                         }
 
                         TunePlan.NeedsSchedule -> {
@@ -488,6 +560,9 @@ class CableTvViewModel
                     _state.update { it.copy(showBanner = false) }
                 }
 
+                checkSleepAndSignOff(now)
+                if (_state.value.paused || _state.value.signedOff) continue
+
                 staticUntilMs?.let { until ->
                     if (now >= until) {
                         staticUntilMs = null
@@ -512,6 +587,28 @@ class CableTvViewModel
             }
         }
 
+        private fun checkSleepAndSignOff(now: Long) {
+            val current = _state.value
+            if (current.sleepAtMs != null && now >= current.sleepAtMs) {
+                _player.value?.stop()
+                exit()
+                return
+            }
+            val hours = settings.value.autoSignOffHours
+            if (hours <= 0 || current.signedOff || current.paused) return
+            if (lastInputMs == 0L) lastInputMs = now
+            if (!current.stillWatching && now - lastInputMs >= hours * 3_600_000L) {
+                stillWatchingDeadlineMs = now + STILL_WATCHING_MS
+                _state.update { it.copy(stillWatching = true, stillWatchingUntilMs = stillWatchingDeadlineMs) }
+            } else if (current.stillWatching && now >= stillWatchingDeadlineMs) {
+                // Nobody answered: stop streaming until someone presses a key.
+                tuneJob?.cancel()
+                staticUntilMs = null
+                _player.value?.stop()
+                _state.update { it.copy(stillWatching = false, signedOff = true, showBanner = false) }
+            }
+        }
+
         /** Re-tunes when playback has wandered from the schedule, for example after a long stall. */
         private fun checkDrift(now: Long) {
             val player = _player.value ?: return
@@ -533,6 +630,9 @@ class CableTvViewModel
             /** How often [CableTvUiState.nowMs] moves. */
             const val COARSE_CLOCK_MS = 30_000L
             private const val NEIGHBOURS = 2
+            private const val JUST_STARTED_MS = 3_000L
+            private const val STILL_WATCHING_MS = 60_000L
+            private val SLEEP_STEPS = listOf(15, 30, 60, 90, 120)
             private const val TICK_MS = 500L
             private const val BANNER_MS = 6_000L
             private const val DIGIT_ERROR_MS = 1_200L

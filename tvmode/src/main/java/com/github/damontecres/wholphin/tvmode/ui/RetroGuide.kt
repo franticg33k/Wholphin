@@ -82,6 +82,9 @@ class GuideModel(
     val onFullscreen: () -> Unit,
     val onSettings: () -> Unit,
     val onExit: () -> Unit,
+    val onSearch: () -> Unit = {},
+    val sleepLabel: String = "SLEEP",
+    val onSleep: () -> Unit = {},
 )
 
 /**
@@ -221,6 +224,8 @@ private fun TopBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         BarButton("WATCH", model.onFullscreen, Modifier.focusRequester(watchButton))
+        BarButton("SEARCH", model.onSearch)
+        BarButton(model.sleepLabel, model.onSleep)
         BarButton("SETTINGS", model.onSettings)
         BarButton("EXIT", model.onExit)
         Spacer(Modifier.weight(1f))

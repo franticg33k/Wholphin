@@ -14,16 +14,27 @@ import androidx.compose.ui.test.onRoot
 import com.github.damontecres.wholphin.tvmode.core.GuideEntry
 import com.github.damontecres.wholphin.tvmode.core.ItemDetails
 import com.github.damontecres.wholphin.tvmode.core.TvChannel
+import com.github.damontecres.wholphin.tvmode.ui.BreakCard
 import com.github.damontecres.wholphin.tvmode.ui.ClassicOverlay
 import com.github.damontecres.wholphin.tvmode.ui.ColorBars
+import com.github.damontecres.wholphin.tvmode.ui.CrtOverlay
 import com.github.damontecres.wholphin.tvmode.ui.DigitOverlay
+import com.github.damontecres.wholphin.tvmode.ui.FeaturePresentationCard
+import com.github.damontecres.wholphin.tvmode.ui.FourThreeFrame
 import com.github.damontecres.wholphin.tvmode.ui.GuideModel
 import com.github.damontecres.wholphin.tvmode.ui.LineupOverlay
 import com.github.damontecres.wholphin.tvmode.ui.LocalTvTheme
 import com.github.damontecres.wholphin.tvmode.ui.OverlayData
+import com.github.damontecres.wholphin.tvmode.ui.PausedScreensaver
+import com.github.damontecres.wholphin.tvmode.ui.RatingBug
 import com.github.damontecres.wholphin.tvmode.ui.RetroGuide
+import com.github.damontecres.wholphin.tvmode.ui.SatelliteOverlay
+import com.github.damontecres.wholphin.tvmode.ui.SearchSheet
+import com.github.damontecres.wholphin.tvmode.ui.StillWatchingPrompt
 import com.github.damontecres.wholphin.tvmode.ui.TuningSplash
 import com.github.damontecres.wholphin.tvmode.ui.TvTheme
+import com.github.damontecres.wholphin.tvmode.ui.UpNextCard
+import com.github.damontecres.wholphin.tvmode.ui.Watermark
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -219,6 +230,14 @@ class TvModeScreenshots {
     }
 
     @Test
+    fun search() {
+        render("guide-search") {
+            RetroGuide(guideModel(TvModeSettings()), preview = { ColorBars(Modifier.fillMaxSize()) })
+            SearchSheet(rows, now, onTune = {})
+        }
+    }
+
+    @Test
     fun overlays() {
         val data =
             OverlayData(
@@ -241,6 +260,34 @@ class TvModeScreenshots {
             ColorBars(Modifier.fillMaxSize())
             LineupOverlay(data)
             DigitOverlay("20", 3, false)
+        }
+        render("overlay-satellite") {
+            ColorBars(Modifier.fillMaxSize())
+            SatelliteOverlay(data)
+        }
+        render("extras-watermark-rating-upnext") {
+            ColorBars(Modifier.fillMaxSize())
+            val logoChannel = channels[3]
+            Watermark(logoChannel, WatermarkMode.ALWAYS, Corner.TOP_RIGHT, 70, mutableStateOf(0L))
+            RatingBug(ProgramStart(rows[3].entries[0], now - 1_000), mutableStateOf(now))
+            UpNextCard(rows[3].entries[0].copy(endMs = now + 40_000), rows[3].entries[1], mutableStateOf(now), false)
+        }
+        render("extras-feature") {
+            ColorBars(Modifier.fillMaxSize())
+            FeaturePresentationCard(ProgramStart(rows[2].entries[0], now - 500), mutableStateOf(now))
+        }
+        render("extras-break") { BreakCard(channels[3], now + 95_000, rows[3].entries[1], mutableStateOf(now), Modifier.fillMaxSize()) }
+        render("extras-bezel") {
+            FourThreeFrame(bezel = true) { ColorBars(Modifier.fillMaxSize()) }
+            CrtOverlay(Scanlines.MEDIUM, vignette = false)
+        }
+        render("extras-paused") {
+            ColorBars(Modifier.fillMaxSize())
+            PausedScreensaver(channels[3])
+        }
+        render("extras-still-watching") {
+            ColorBars(Modifier.fillMaxSize())
+            StillWatchingPrompt(now + 42_000, mutableStateOf(now))
         }
         render("tuning-static") { TuningSplash(TuningStyle.STATIC, channels[3], true, false, Modifier.fillMaxSize()) }
         render("tuning-standby") { TuningSplash(TuningStyle.STANDBY, channels[3], true, false, Modifier.fillMaxSize()) }
