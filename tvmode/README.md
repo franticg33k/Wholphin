@@ -15,7 +15,8 @@ The app touches very little so rebasing on upstream stays easy:
 
 - `WholphinTvModeHost` implements `TvModeHost` (signed-in API client, player factory, navigation), bound in `TvModeModule`.
 - `Destination.CableTv` and its branch in `DestinationContent`.
-- A *Cable TV* nav drawer item, shown only when the server's plugin answers (`CableTvAvailability`).
+- A *Cable TV* nav drawer item, shown only when the server's plugin answers (`CableTvAvailability`). It takes part in
+  upstream's ordering: move or hide it under Settings → Customize Navigation Drawer Items.
 
 ## Remote keys
 
@@ -34,6 +35,8 @@ The app touches very little so rebasing on upstream stays easy:
   the banner and the guide. Channels without one show only their number and name.
 - When channels have a category (set per channel in the plugin), the guide shows category chips above the grid:
   press Up from the top row to reach them and pick one to filter the guide; *All* shows every channel.
+- The line above the guide describes the focused programme. OK on the programme airing now tunes to it; OK on a
+  later one only says when it starts, since a channel can't be watched ahead of its schedule.
 - Video keeps its aspect ratio (pixel aspect included): 4:3 and widescreen shows get black bars rather than being
   stretched.
 

@@ -329,6 +329,8 @@ private fun GuideOverlay(
     val categories = remember(state.guide) { state.guide.mapNotNull { it.channel.category }.distinct() }
     val selected = category?.takeIf { it in categories }
     val rows = if (selected == null) state.guide else state.guide.filter { it.channel.category == selected }
+    var focusedCell by remember { mutableStateOf<Pair<TvChannel, GuideEntry>?>(null) }
+    var notice by remember { mutableStateOf<String?>(null) }
     Column(
         modifier =
             modifier
@@ -349,7 +351,9 @@ private fun GuideOverlay(
                 }
             }
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(8.dp))
+        GuideDetails(focusedCell, notice, state.nowMs)
+        Spacer(Modifier.height(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items(rows, key = { it.channel.id }) { row ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -369,7 +373,18 @@ private fun GuideOverlay(
                                 entry = entry,
                                 visibleFromMs = state.guideStartMs,
                                 airing = airing,
-                                onClick = { onTune(row.channel.id) },
+                                onFocused = {
+                                    focusedCell = row.channel to entry
+                                    notice = null
+                                },
+                                onClick = {
+                                    // Only what's on now can be watched; a later programme says when it starts.
+                                    if (airing) {
+                                        onTune(row.channel.id)
+                                    } else if (entry.startMs > state.nowMs) {
+                                        notice = "Starts at ${time(entry.startMs)}. Tune to ${row.channel.number} then to watch it."
+                                    }
+                                },
                                 modifier = if (isCurrentRow && airing) Modifier.focusRequester(firstCell) else Modifier,
                             )
                         }
@@ -386,6 +401,48 @@ private fun GuideOverlay(
             runCatching { firstChip.requestFocus() }
         }
     }
+}
+
+/** The focused programme: what it is, when it airs, and whether it can be watched now. */
+@Composable
+private fun GuideDetails(
+    cell: Pair<TvChannel, GuideEntry>?,
+    notice: String?,
+    nowMs: Long,
+) {
+    Column(Modifier.height(64.dp)) {
+        val (channel, entry) = cell ?: return@Column
+        Text(
+            text = listOfNotNull(entry.title, entry.episode, entry.episodeTitle).joinToString(" · ") + if (entry.premiere) "  NEW" else "",
+            color = Color.White,
+            fontSize = 20.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        val status =
+            when {
+                nowMs in entry.startMs until entry.endMs -> "On now, ${((entry.endMs - nowMs) / 60_000).coerceAtLeast(
+                    0,
+                )} min left · OK to watch"
+
+                entry.startMs > nowMs -> "Starts in ${formatWait(entry.startMs - nowMs)}"
+
+                else -> "Ended"
+            }
+        Text(
+            text = "${channel.number} ${channel.name} · ${time(entry.startMs)} – ${time(entry.endMs)} · $status",
+            color = Color(0xFFBBBBBB),
+            fontSize = 14.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        notice?.let { Text(text = it, color = MaterialTheme.colorScheme.primary, fontSize = 14.sp, maxLines = 1) }
+    }
+}
+
+private fun formatWait(ms: Long): String {
+    val minutes = (ms + 59_999) / 60_000
+    return if (minutes < 60) "$minutes min" else "${minutes / 60} h ${minutes % 60} min"
 }
 
 @Composable
@@ -421,6 +478,7 @@ private fun GuideCell(
     entry: GuideEntry,
     visibleFromMs: Long,
     airing: Boolean,
+    onFocused: () -> Unit,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -439,8 +497,10 @@ private fun GuideCell(
                 .height(56.dp)
                 .background(background, RoundedCornerShape(4.dp))
                 .border(1.dp, if (focused) Color.White else Color.Transparent, RoundedCornerShape(4.dp))
-                .onFocusChanged { focused = it.isFocused }
-                .clickable(onClick = onClick)
+                .onFocusChanged {
+                    focused = it.isFocused
+                    if (it.isFocused) onFocused()
+                }.clickable(onClick = onClick)
                 .padding(horizontal = 8.dp, vertical = 4.dp),
     ) {
         Text(
