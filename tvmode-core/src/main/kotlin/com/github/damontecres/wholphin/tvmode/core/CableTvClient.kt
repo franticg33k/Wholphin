@@ -18,6 +18,19 @@ fun interface CableTvTransport {
     ): String
 }
 
+/** A failed request, with its HTTP status; transports throw it so callers can tell a missing endpoint apart. */
+class CableTvHttpException(
+    val status: Int,
+    message: String,
+) : java.io.IOException(message)
+
+/** A channel's guide entries for a window, with the version they belong to. */
+data class ChannelGuide(
+    val channelId: String,
+    val scheduleVersion: String,
+    val entries: List<GuideEntry>,
+)
+
 /** A channel's slots for a window, with the version they belong to. */
 data class ChannelSchedule(
     val channelId: String,
@@ -62,7 +75,45 @@ class CableTvClient(
         return dto.channels.map { c -> ChannelSchedule(c.channelId, c.scheduleVersion, c.slots.map { it.toSlot() }) }
     }
 
+    /**
+     * Programme-level guide for a window (breaks folded in), far smaller than [schedule]. Returns null when the
+     * server's plugin predates the endpoint; build the guide from [schedule] then.
+     */
+    suspend fun guide(
+        channelIds: Collection<String>,
+        fromMs: Long,
+        toMs: Long,
+    ): List<ChannelGuide>? {
+        val query =
+            buildMap {
+                if (channelIds.isNotEmpty()) put("channelIds", channelIds.joinToString(","))
+                put(
+                    "from",
+                    java.time.Instant
+                        .ofEpochMilli(fromMs)
+                        .toString(),
+                )
+                put(
+                    "to",
+                    java.time.Instant
+                        .ofEpochMilli(toMs)
+                        .toString(),
+                )
+            }
+        val dto =
+            try {
+                fetch<GuideDto>("CableTv/Guide", query) { it.serverTime }
+            } catch (e: CableTvHttpException) {
+                if (e.status == 404) return null
+                throw e
+            }
+        return dto.channels.map { c -> ChannelGuide(c.channelId, c.scheduleVersion, c.programs.map { it.toEntry() }) }
+    }
+
     suspend fun presentation(): PresentationDto = fetch("CableTv/Presentation", emptyMap()) { null }
+
+    /** Programme details from Jellyfin itself, for the guide's info panel and the player overlay. */
+    suspend fun details(itemId: String): ItemDetails = fetch<JellyfinItemDto>("Items/$itemId", emptyMap()) { null }.toDetails()
 
     private suspend inline fun <reified T> fetch(
         path: String,

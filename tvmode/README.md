@@ -15,18 +15,53 @@ The app touches very little so rebasing on upstream stays easy:
 
 - `WholphinTvModeHost` implements `TvModeHost` (signed-in API client, player factory, navigation), bound in `TvModeModule`.
 - `Destination.CableTv` and its branch in `DestinationContent`.
-- A *Cable TV* nav drawer item, shown only when the server's plugin answers (`CableTvAvailability`).
+- A *Cable TV* nav drawer item, shown only when the server's plugin answers (`CableTvAvailability`). It takes part in
+  upstream's ordering: move or hide it under Settings → Customize Navigation Drawer Items.
 
 ## Remote keys
 
-| Key | Action |
-|---|---|
-| Up / Down, Channel +/- | Change channel |
-| 0–9 | Tune by number (completes at full length or after 2 s) |
-| OK / Guide / Menu | Open or close the guide |
-| Left / Right / Info | Show the channel banner |
-| Last | Previous channel |
-| Back | Close the guide, or leave TV mode |
+| Key | Full screen | Guide |
+|---|---|---|
+| Up / Down, Channel +/- | Change channel | Move between channels |
+| 0–9 | Tune by number (`1 0 _ _`; red when no channel has it) | |
+| OK | Open the guide | On the programme airing now: watch it. On a later one: say when it starts |
+| Left / Right / Info | Show the overlay | Move through programmes; the grid pages in half hours |
+| Back | Open the guide | Leave TV mode |
+| Long press Back, Last | Previous channel | |
+| Play/Pause | Pause (a "broadcast paused" screensaver); any key rejoins live | |
+| Guide / Menu | Open the guide | Close the guide |
+
+## Screens
+
+The layout follows a study of classic cable-guide apps (behaviour and layout only; every asset is
+original or openly licensed).
+
+- **Guide:** a top bar (Watch, Settings, Exit); an info panel with the focused programme's clear logo or title, the
+  `S1E10 - Episode` line in the accent colour, times, channel, chips (air date, rating, quality, audio, runtime, NEW,
+  community rating) and overview, over a faint backdrop; the live channel in a preview window; category tabs; a time
+  row with a clock, half-hour columns and a "now" marker and line; and the grid, whose cells are as wide as the
+  programmes are long, coloured by type (show, movie, kids), with a progress underline on what's airing, rating pills
+  and dimmed ended programmes. Details come from Jellyfin's item API when focus rests on a programme.
+- **Search** (guide top bar): type a channel name or number, or a title that's on now; OK tunes.
+- **Sleep timer** (guide top bar): off, 15, 30, 60, 90 or 120 minutes; TV mode closes then.
+- **Overlays:** *Satellite* is a receiver-style banner across the top (date, now with times and progress, next).
+  *Classic* puts the channel number and logo in the top-right corner and now / coming up (with show
+  logos), a timeline and media info bubbles along the bottom. *Lineup* is a bottom bar with the channel, what's on,
+  the next programmes and a clock.
+- **Tuning screens:** static, colour bars or a "please stand by" card, optionally with the channel logo. A gap in
+  the schedule shows a break screen with an "UP NEXT IN m:ss" countdown instead.
+- **On the picture:** the channel logo in a corner (always or every five minutes, with position and opacity), a rating
+  badge when a programme starts, "Our feature presentation" before movies, and an up-next card in a programme's last
+  minute.
+- **CRT:** scanlines, corner shading, and 4:3 picture modes: cropped, letterboxed, or inside a drawn CRT set.
+- **Idle:** after a set number of hours without a key press, "Still watching?" asks for a minute and then signs off
+  (stops streaming) until a key is pressed.
+- **Themes:** Retro cable (navy, pastel cells, yellow focus, Share Tech Mono), Midnight, Phosphor and Modern.
+- **Settings** (Settings in the guide, kept on the device): theme, accent and focus colours, logo on screen, rating
+  badge, feature presentation, up next, break screens, picture mode, scanlines, corner shading, idle sign-off, overlay, tuning screen and logo, channel column
+  (numbers, logos, both), detailed two-line cells, colour by type, dim ended, time line, 24-hour clock, media info.
+- Channel logos come from the plugin (`logoUrl`); categories from each channel's plugin setting.
+- Video keeps its aspect ratio (pixel aspect included) instead of stretching.
 
 ## How playback follows the schedule
 
@@ -42,3 +77,12 @@ The app touches very little so rebasing on upstream stays easy:
 ```sh
 ./gradlew :tvmode-core:test
 ```
+
+Screenshots of the guide (every theme), the overlays and a tuning screen, rendered with sample data to
+`tvmode/build/screenshots/`:
+
+```sh
+./gradlew :tvmode:testDebugUnitTest --tests '*TvModeScreenshots*'
+```
+
+The guide font is Share Tech Mono (SIL Open Font License, `tvmode/ShareTechMono-OFL.txt`).

@@ -1,30 +1,16 @@
 package com.github.damontecres.wholphin.tvmode
 
-import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -32,7 +18,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
@@ -40,92 +25,274 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.media3.common.Player
 import androidx.media3.ui.compose.PlayerSurface
 import androidx.media3.ui.compose.SURFACE_TYPE_SURFACE_VIEW
-import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.Text
-import com.github.damontecres.wholphin.tvmode.core.GuideEntry
-import kotlinx.coroutines.delay
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
-import kotlin.random.Random
+import androidx.media3.ui.compose.modifiers.resizeWithContentScale
+import androidx.media3.ui.compose.state.rememberPresentationState
+import com.github.damontecres.wholphin.tvmode.ui.BreakCard
+import com.github.damontecres.wholphin.tvmode.ui.ClassicOverlay
+import com.github.damontecres.wholphin.tvmode.ui.CrtOverlay
+import com.github.damontecres.wholphin.tvmode.ui.DigitOverlay
+import com.github.damontecres.wholphin.tvmode.ui.FeaturePresentationCard
+import com.github.damontecres.wholphin.tvmode.ui.FourThreeFrame
+import com.github.damontecres.wholphin.tvmode.ui.GuideModel
+import com.github.damontecres.wholphin.tvmode.ui.ImageUrls
+import com.github.damontecres.wholphin.tvmode.ui.LineupOverlay
+import com.github.damontecres.wholphin.tvmode.ui.LocalTvTheme
+import com.github.damontecres.wholphin.tvmode.ui.OverlayData
+import com.github.damontecres.wholphin.tvmode.ui.PausedScreensaver
+import com.github.damontecres.wholphin.tvmode.ui.RatingBug
+import com.github.damontecres.wholphin.tvmode.ui.RetroGuide
+import com.github.damontecres.wholphin.tvmode.ui.SatelliteOverlay
+import com.github.damontecres.wholphin.tvmode.ui.SearchSheet
+import com.github.damontecres.wholphin.tvmode.ui.SettingsDialog
+import com.github.damontecres.wholphin.tvmode.ui.SignedOffCard
+import com.github.damontecres.wholphin.tvmode.ui.StillWatchingPrompt
+import com.github.damontecres.wholphin.tvmode.ui.TuningSplash
+import com.github.damontecres.wholphin.tvmode.ui.TvText
+import com.github.damontecres.wholphin.tvmode.ui.TvTheme
+import com.github.damontecres.wholphin.tvmode.ui.UpNextCard
+import com.github.damontecres.wholphin.tvmode.ui.Watermark
 
 /**
- * Full-screen TV mode. Up/down or channel keys change channel, digits tune by number, OK opens the guide, Info shows
- * the banner, Back closes the guide or leaves.
+ * TV mode. Full screen: Up/Down or Channel +/- change channel, digits tune by number, OK or Back opens the guide,
+ * Left/Right/Info show the overlay, Play/Pause pauses, a long press on Back returns to the previous channel. In the
+ * guide, OK on the programme airing now tunes to it and Back leaves TV mode.
  */
 @Composable
 fun CableTvScreen(
     modifier: Modifier = Modifier,
     viewModel: CableTvViewModel = hiltViewModel(),
-    onExit: () -> Unit = viewModel::exit,
 ) {
     val state by viewModel.state.collectAsState()
     val player by viewModel.player.collectAsState()
+    val settings by viewModel.settings.collectAsState()
+    // States passed down unread, so a tick or a loaded description only recomposes what shows it.
+    val details = viewModel.details.collectAsState()
+    val clock = viewModel.clock.collectAsState()
     val focusRequester = remember { FocusRequester() }
+    var guideCategory by remember { mutableStateOf<String?>(null) }
+    var showSettings by remember { mutableStateOf(false) }
+    var showSearch by remember { mutableStateOf(false) }
+    val backState = remember { BackPress() }
+    val images = remember(viewModel) { ImageUrls(viewModel::imageUrl) }
+    val theme =
+        remember(settings.theme, settings.accent, settings.focus) {
+            TvTheme.of(settings.theme).customized(settings.accent.argb, settings.focus.argb)
+        }
 
-    BackHandler {
-        if (!viewModel.closeGuide()) onExit()
+    // One video surface, moved between full screen and the guide's preview window without being recreated.
+    val video =
+        remember(player) {
+            player?.let { p -> movableContentOf { scale: ContentScale -> VideoSurface(p, scale) } }
+        }
+    val picture: @Composable (Boolean, ContentScale) -> Unit = { compact, scale ->
+        Box(Modifier.fillMaxSize()) {
+            video?.invoke(scale)
+            val breakUntil = state.breakUntilMs
+            if (state.showStatic || state.loading) {
+                if (breakUntil != null && settings.breakScreens && !state.loading) {
+                    BreakCard(state.channel, breakUntil, state.next, clock, Modifier.fillMaxSize())
+                } else {
+                    TuningSplash(settings.tuningStyle, state.channel, settings.tuningLogo, compact, Modifier.fillMaxSize())
+                }
+            }
+        }
     }
 
-    Box(
-        modifier =
-            modifier
-                .fillMaxSize()
-                .background(Color.Black)
-                .focusRequester(focusRequester)
-                .onKeyEvent { handleKey(it, viewModel, state.showGuide) }
-                .focusable(),
-    ) {
-        player?.let {
-            PlayerSurface(
-                player = it,
-                surfaceType = SURFACE_TYPE_SURFACE_VIEW,
-                modifier = Modifier.fillMaxSize(),
+    CompositionLocalProvider(LocalTvTheme provides theme) {
+        Box(
+            modifier =
+                modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+                    .focusRequester(focusRequester)
+                    .onKeyEvent {
+                        handleKey(it, viewModel, state, backState) {
+                            // Back closes the search sheet before anything else.
+                            if (showSearch) {
+                                showSearch = false
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                    }.focusable(),
+        ) {
+            if (state.showGuide) {
+                val categories = state.guide.mapNotNull { it.channel.category }.distinct()
+                val selected = guideCategory?.takeIf { it in categories }
+                RetroGuide(
+                    model =
+                        GuideModel(
+                            rows = if (selected == null) state.guide else state.guide.filter { it.channel.category == selected },
+                            categories = categories,
+                            category = selected,
+                            current = state.channel,
+                            windowStartMs = state.guideWindowStartMs,
+                            nowMs = state.nowMs,
+                            clock = clock,
+                            details = details,
+                            settings = settings,
+                            images = images,
+                            onCategory = { guideCategory = it },
+                            onTune = viewModel::tuneTo,
+                            onShift = viewModel::shiftGuide,
+                            onFocusItem = viewModel::requestDetails,
+                            onFullscreen = viewModel::closeGuide,
+                            onSettings = { showSettings = true },
+                            onExit = viewModel::exit,
+                            onSearch = { showSearch = true },
+                            sleepLabel = sleepLabel(state.sleepAtMs, state.nowMs),
+                            onSleep = viewModel::cycleSleep,
+                        ),
+                    preview = { picture(true, ContentScale.Fit) },
+                )
+                if (showSearch) {
+                    SearchSheet(state.guide, state.nowMs, onTune = {
+                        showSearch = false
+                        viewModel.tuneTo(it)
+                    })
+                }
+            } else {
+                FullScreen(state, settings, clock, details, images, picture)
+            }
+
+            if (state.digits.isNotEmpty()) {
+                DigitOverlay(state.digits, state.digitSlots, state.digitError, Modifier.align(Alignment.TopStart).padding(32.dp))
+            }
+            if (state.paused) PausedScreensaver(state.channel)
+            if (state.stillWatching) StillWatchingPrompt(state.stillWatchingUntilMs, clock)
+            if (state.signedOff) SignedOffCard(state.channel)
+
+            state.error?.let {
+                TvText(it, color = Color.White, maxLines = 4, modifier = Modifier.align(Alignment.Center).padding(32.dp))
+            }
+        }
+
+        if (showSettings) {
+            SettingsDialog(settings, viewModel::updateSettings, onDismiss = { showSettings = false })
+        }
+    }
+
+    LaunchedEffect(state.showGuide, showSettings) {
+        if (!state.showGuide && !showSettings) runCatching { focusRequester.requestFocus() }
+        if (!state.showGuide) showSearch = false
+    }
+}
+
+@Composable
+private fun FullScreen(
+    state: CableTvUiState,
+    settings: TvModeSettings,
+    clock: androidx.compose.runtime.State<Long>,
+    details: androidx.compose.runtime.State<Map<String, com.github.damontecres.wholphin.tvmode.core.ItemDetails>>,
+    images: ImageUrls,
+    picture: @Composable (Boolean, ContentScale) -> Unit,
+) {
+    when (settings.displayMode) {
+        DisplayMode.ORIGINAL -> picture(false, ContentScale.Fit)
+        DisplayMode.CROP_4_3 -> FourThreeFrame(bezel = false) { picture(false, ContentScale.Crop) }
+        DisplayMode.LETTERBOX_4_3 -> FourThreeFrame(bezel = false) { picture(false, ContentScale.Fit) }
+        DisplayMode.BEZEL -> FourThreeFrame(bezel = true) { picture(false, ContentScale.Crop) }
+    }
+    CrtOverlay(settings.scanlines, settings.vignette && settings.displayMode != DisplayMode.BEZEL)
+
+    val playing = !state.showStatic && !state.loading
+    if (playing) {
+        Watermark(state.channel, settings.watermark, settings.watermarkCorner, settings.watermarkOpacity, clock)
+        if (settings.featurePresentation) FeaturePresentationCard(state.programStart, clock)
+        if (settings.ratingBug) RatingBug(state.programStart, clock)
+        if (settings.upNextCard && !state.showBanner) UpNextCard(state.now, state.next, clock, settings.clock24h)
+    }
+    if (state.showBanner) {
+        val data =
+            OverlayData(
+                channel = state.channel,
+                now = state.now,
+                next = state.next,
+                upcoming = state.upcoming,
+                details = details,
+                nowMs = state.nowMs,
+                clock = clock,
+                clock24h = settings.clock24h,
+                showMediaInfo = settings.mediaInfo,
+                images = images,
             )
-        }
-
-        if (state.showStatic || state.loading) {
-            StaticNoise(Modifier.fillMaxSize())
-        }
-
-        state.error?.let {
-            Text(
-                text = it,
-                color = Color.White,
-                modifier = Modifier.align(Alignment.Center).padding(32.dp),
-            )
-        }
-
-        if (state.showBanner && !state.showGuide) {
-            ChannelBanner(state, Modifier.align(Alignment.BottomStart).fillMaxWidth())
-        }
-
-        if (state.showGuide) {
-            GuideOverlay(state, onTune = viewModel::tuneTo, modifier = Modifier.fillMaxSize())
+        when (settings.overlayStyle) {
+            OverlayStyle.CLASSIC -> ClassicOverlay(data)
+            OverlayStyle.LINEUP -> LineupOverlay(data)
+            OverlayStyle.SATELLITE -> SatelliteOverlay(data)
         }
     }
+}
 
-    LaunchedEffect(state.showGuide) {
-        if (!state.showGuide) focusRequester.requestFocus()
+private fun sleepLabel(
+    sleepAtMs: Long?,
+    nowMs: Long,
+): String = sleepAtMs?.let { "SLEEP ${((it - nowMs) / 60_000).coerceAtLeast(1)}m" } ?: "SLEEP OFF"
+
+@Composable
+private fun VideoSurface(
+    player: Player,
+    scale: ContentScale,
+) {
+    // Letterbox or pillarbox to the video's own aspect ratio (pixel aspect included) instead of stretching.
+    val presentation = rememberPresentationState(player)
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        PlayerSurface(
+            player = player,
+            surfaceType = SURFACE_TYPE_SURFACE_VIEW,
+            modifier = Modifier.resizeWithContentScale(scale, presentation.videoSizeDp),
+        )
     }
+}
+
+/** Tells a short Back press from a long one. */
+private class BackPress {
+    var longPressHandled = false
 }
 
 private fun handleKey(
     event: KeyEvent,
     viewModel: CableTvViewModel,
-    guideOpen: Boolean,
+    state: CableTvUiState,
+    back: BackPress,
+    closeOverlay: () -> Boolean,
 ): Boolean {
+    if (event.type == KeyEventType.KeyDown) viewModel.noteInput()
+    // A signed-off TV wakes on any key (noteInput re-tunes); swallow the press.
+    if (state.signedOff || state.stillWatching) return true
+    if (state.paused) {
+        if (event.type == KeyEventType.KeyUp) viewModel.togglePause()
+        return true
+    }
+    if (event.key == Key.Back) {
+        when (event.type) {
+            KeyEventType.KeyDown -> {
+                if (event.nativeKeyEvent.repeatCount > 0 && !back.longPressHandled && !state.showGuide) {
+                    back.longPressHandled = true
+                    viewModel.lastChannel()
+                }
+            }
+
+            KeyEventType.KeyUp -> {
+                if (back.longPressHandled) {
+                    back.longPressHandled = false
+                } else if (!closeOverlay()) {
+                    viewModel.back()
+                }
+            }
+        }
+        return true
+    }
     if (event.type != KeyEventType.KeyDown) return false
-    // With the guide open, let focus move through its cells; only the guide keys are ours.
-    if (guideOpen) {
+    // With the guide open, let focus move through it; only the guide keys are ours.
+    if (state.showGuide) {
         return when (event.key) {
             Key.Guide, Key.Menu -> {
                 viewModel.toggleGuide()
@@ -162,6 +329,11 @@ private fun handleKey(
             true
         }
 
+        Key.MediaPlayPause, Key.MediaPause -> {
+            viewModel.togglePause()
+            true
+        }
+
         Key.LastChannel -> {
             viewModel.lastChannel()
             true
@@ -187,181 +359,3 @@ private fun digitOf(key: Key): Int? =
         Key.Nine, Key.NumPad9 -> 9
         else -> null
     }
-
-/** Analogue-TV static, shown while a file buffers and during filler. */
-@Composable
-fun StaticNoise(modifier: Modifier = Modifier) {
-    var frame by remember { mutableLongStateOf(0L) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(50)
-            frame++
-        }
-    }
-    Canvas(modifier) {
-        val random = Random(frame)
-        val cell = 6.dp.toPx()
-        val columns = (size.width / cell).toInt() + 1
-        val rows = (size.height / cell).toInt() + 1
-        drawRect(Color(0xFF101010))
-        for (row in 0 until rows) {
-            for (column in 0 until columns) {
-                val v = random.nextFloat()
-                if (v > 0.45f) {
-                    drawRect(
-                        color = Color(v, v, v),
-                        topLeft =
-                            androidx.compose.ui.geometry
-                                .Offset(column * cell, row * cell),
-                        size =
-                            androidx.compose.ui.geometry
-                                .Size(cell, cell),
-                    )
-                }
-            }
-        }
-    }
-}
-
-private val timeFormat: DateTimeFormatter = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
-
-private fun time(ms: Long): String = timeFormat.format(Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()))
-
-@Composable
-private fun ChannelBanner(
-    state: CableTvUiState,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier =
-            modifier
-                .background(Color(0xCC000000))
-                .padding(horizontal = 48.dp, vertical = 24.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = state.digits.ifEmpty { state.channel?.number ?: "" },
-                color = Color.White,
-                fontSize = 40.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            Spacer(Modifier.width(24.dp))
-            Text(text = state.channel?.name ?: "", color = Color.White, fontSize = 24.sp)
-        }
-        state.now?.let { now ->
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = listOfNotNull(now.title, now.episode, now.episodeTitle).joinToString(" · ") + if (now.premiere) "  NEW" else "",
-                color = Color.White,
-                fontSize = 20.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            val remaining = ((now.endMs - state.nowMs) / 60_000).coerceAtLeast(0)
-            Text(
-                text = "${time(now.startMs)} – ${time(now.endMs)} · $remaining min left",
-                color = Color(0xFFBBBBBB),
-                fontSize = 16.sp,
-            )
-        }
-        state.next?.let { next ->
-            Text(
-                text = "Next: ${time(next.startMs)} ${next.title}",
-                color = Color(0xFFBBBBBB),
-                fontSize = 16.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
-}
-
-private val DP_PER_MINUTE = 6.dp
-
-@Composable
-private fun GuideOverlay(
-    state: CableTvUiState,
-    onTune: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val firstCell = remember { FocusRequester() }
-    Column(
-        modifier =
-            modifier
-                .background(Color(0xE6000000))
-                .padding(32.dp),
-    ) {
-        Text(text = "Guide", color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(12.dp))
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(state.guide, key = { it.channel.id }) { row ->
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.width(160.dp)) {
-                        Text(text = row.channel.number, color = Color.White, fontWeight = FontWeight.Bold)
-                        Text(text = row.channel.name, color = Color(0xFFBBBBBB), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                        items(row.entries, key = { it.guideGroup }) { entry ->
-                            val isCurrentRow = row.channel.id == state.channel?.id
-                            val airing = state.nowMs in entry.startMs until entry.endMs
-                            GuideCell(
-                                entry = entry,
-                                visibleFromMs = state.guideStartMs,
-                                airing = airing,
-                                onClick = { onTune(row.channel.id) },
-                                modifier = if (isCurrentRow && airing) Modifier.focusRequester(firstCell) else Modifier,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-    LaunchedEffect(state.guide.isNotEmpty()) {
-        if (state.guide.isNotEmpty()) {
-            runCatching { firstCell.requestFocus() }
-        }
-    }
-}
-
-@Composable
-private fun GuideCell(
-    entry: GuideEntry,
-    visibleFromMs: Long,
-    airing: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    var focused by remember { mutableStateOf(false) }
-    val minutes = ((entry.endMs - maxOf(entry.startMs, visibleFromMs)) / 60_000).coerceIn(5, 240)
-    val background =
-        when {
-            focused -> MaterialTheme.colorScheme.primary
-            airing -> Color(0xFF2E3440)
-            else -> Color(0xFF1E2128)
-        }
-    Column(
-        modifier =
-            modifier
-                .width(DP_PER_MINUTE * minutes.toInt())
-                .height(56.dp)
-                .background(background, RoundedCornerShape(4.dp))
-                .border(1.dp, if (focused) Color.White else Color.Transparent, RoundedCornerShape(4.dp))
-                .onFocusChanged { focused = it.isFocused }
-                .clickable(onClick = onClick)
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-    ) {
-        Text(
-            text = entry.title + if (entry.premiere) "  NEW" else "",
-            color = Color.White,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            text = time(entry.startMs) + (entry.lineup?.let { " · $it" } ?: ""),
-            color = Color(0xFFBBBBBB),
-            fontSize = 12.sp,
-            maxLines = 1,
-        )
-    }
-}

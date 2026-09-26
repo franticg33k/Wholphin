@@ -14,6 +14,7 @@ data class ChannelDto(
     val logoUrl: String? = null,
     val scheduleVersion: String,
     val poolSize: Int = 0,
+    val category: String? = null,
 )
 
 @Serializable
@@ -38,6 +39,9 @@ data class SlotDto(
     val guideGroup: String,
     val premiere: Boolean? = null,
     val lineup: String? = null,
+    val year: Int? = null,
+    val rating: String? = null,
+    val movie: Boolean? = null,
 )
 
 @Serializable
@@ -56,6 +60,54 @@ data class ScheduleDto(
     val scheduleVersion: String,
     val channels: List<ChannelScheduleDto> = emptyList(),
 )
+
+@Serializable
+data class GuideProgramDto(
+    val guideGroup: String,
+    val start: String,
+    val end: String,
+    val itemId: String? = null,
+    val title: String? = null,
+    val episode: String? = null,
+    val episodeTitle: String? = null,
+    val premiere: Boolean? = null,
+    val lineup: String? = null,
+    val year: Int? = null,
+    val rating: String? = null,
+    val movie: Boolean? = null,
+)
+
+@Serializable
+data class ChannelGuideDto(
+    val channelId: String,
+    val scheduleVersion: String,
+    val programs: List<GuideProgramDto> = emptyList(),
+)
+
+@Serializable
+data class GuideDto(
+    val serverTime: String,
+    val from: String,
+    val to: String,
+    val channels: List<ChannelGuideDto> = emptyList(),
+)
+
+internal fun GuideProgramDto.toEntry() =
+    GuideEntry(
+        guideGroup = guideGroup,
+        title = title ?: "Off air",
+        episode = episode,
+        episodeTitle = episodeTitle,
+        startMs = parseTime(start),
+        endMs = parseTime(end),
+        premiere = premiere == true,
+        lineup = lineup,
+        offAir = itemId == null,
+        itemId = itemId,
+        year = year,
+        rating = rating?.takeIf { it.isNotBlank() },
+        movie = movie == true,
+    )
 
 @Serializable
 data class NowDto(
@@ -103,6 +155,7 @@ data class TvChannel(
     val logoUrl: String?,
     val scheduleVersion: String,
     val poolSize: Int,
+    val category: String? = null,
 )
 
 /**
@@ -125,6 +178,9 @@ data class TvSlot(
     val guideGroup: String,
     val premiere: Boolean,
     val lineup: String?,
+    val year: Int? = null,
+    val rating: String? = null,
+    val movie: Boolean = false,
 ) {
     val durationMs: Long get() = endMs - startMs
 
@@ -137,7 +193,18 @@ data class TvSlot(
 
 internal fun parseTime(value: String): Long = Instant.parse(value).toEpochMilli()
 
-internal fun ChannelDto.toChannel() = TvChannel(channelId, number, name, logoUrl, scheduleVersion, poolSize)
+internal fun ChannelDto.toChannel() =
+    TvChannel(
+        channelId,
+        number,
+        name,
+        logoUrl,
+        scheduleVersion,
+        poolSize,
+        category?.takeIf {
+            it.isNotBlank()
+        },
+    )
 
 internal fun SlotDto.toSlot() =
     TvSlot(
@@ -155,4 +222,7 @@ internal fun SlotDto.toSlot() =
         guideGroup = guideGroup,
         premiere = premiere == true,
         lineup = lineup,
+        year = year,
+        rating = rating?.takeIf { it.isNotBlank() },
+        movie = movie == true,
     )

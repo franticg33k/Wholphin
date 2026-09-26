@@ -16,6 +16,7 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.LoadControl
 import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.RenderersFactory
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
@@ -63,6 +64,7 @@ class PlayerFactory
         suspend fun createVideoPlayer(
             backend: PlayerBackend,
             appPreferences: AppPreferences,
+            loadControl: LoadControl? = null,
         ): PlayerCreation {
             val prefs = appPreferences.playbackPreferences
             withContext(WholphinDispatchers.Main) {
@@ -147,6 +149,7 @@ class PlayerFactory
                             .setMediaSourceFactory(mediaSourceFactory)
                             .setRenderersFactory(renderersFactory)
                             .setTrackSelector(trackSelector)
+                            .apply { loadControl?.let { setLoadControl(it) } }
                             .build()
                             .apply {
                                 assHandler?.init(this)

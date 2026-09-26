@@ -53,4 +53,25 @@ class CableTvClientTest {
             )
             assertTrue(client.clock.isSynced)
         }
+
+    @Test
+    fun parsesChannelLogosAndCategories() =
+        runTest {
+            val json =
+                """
+                {"serverTime":"2026-09-26T12:50:20.0794892Z","channels":[
+                 {"channelId":"ch-toons","number":"12","name":"Toons","logoUrl":"http://jf:8096/CableTv/Logo/ch-toons?v=ed112998",
+                  "scheduleVersion":"cba07ae8933b","poolSize":5,"category":"Kids"},
+                 {"channelId":"ch-old","number":"30","name":"Old server","scheduleVersion":"c8fe","poolSize":1,"category":" "}
+                ]}
+                """.trimIndent()
+            val client = CableTvClient({ _, _ -> json })
+
+            val channels = client.channels()
+
+            assertEquals("http://jf:8096/CableTv/Logo/ch-toons?v=ed112998", channels[0].logoUrl)
+            assertEquals("Kids", channels[0].category)
+            assertNull(channels[1].logoUrl)
+            assertNull(channels[1].category)
+        }
 }
