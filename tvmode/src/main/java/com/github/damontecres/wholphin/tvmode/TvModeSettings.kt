@@ -127,6 +127,10 @@ data class TvModeSettings(
     /** A custom theme's id, or -1 for [theme]. */
     val customTheme: Int = -1,
     val uiSounds: Boolean = true,
+    /** Show subtitles when the programme has them. */
+    val subtitles: Boolean = false,
+    /** Preferred subtitle language ("eng", ...); empty follows the device language. */
+    val subtitleLanguage: String = "",
 )
 
 /** A theme made in the theme editor: a built-in theme with some colour roles replaced. */
@@ -230,6 +234,8 @@ class TvModeSettingsStore
                 .putString("focus", next.focus.name)
                 .putInt("customTheme", next.customTheme)
                 .putBoolean("uiSounds", next.uiSounds)
+                .putBoolean("subtitles", next.subtitles)
+                .putString("subtitleLanguage", next.subtitleLanguage)
                 .apply()
         }
 
@@ -262,6 +268,8 @@ class TvModeSettingsStore
                 focus = enumOr(prefs.getString("focus", null), d.focus),
                 customTheme = prefs.getInt("customTheme", d.customTheme),
                 uiSounds = prefs.getBoolean("uiSounds", d.uiSounds),
+                subtitles = prefs.getBoolean("subtitles", d.subtitles),
+                subtitleLanguage = prefs.getString("subtitleLanguage", d.subtitleLanguage) ?: d.subtitleLanguage,
             )
         }
 
@@ -270,3 +278,23 @@ class TvModeSettingsStore
             default: E,
         ): E = enumValues<E>().firstOrNull { it.name == name } ?: default
     }
+
+/** Subtitle languages the settings cycle through: code to name. "" follows the device language. */
+val SUBTITLE_LANGUAGES: List<Pair<String, String>> =
+    listOf(
+        "" to "Device language",
+        "eng" to "English",
+        "spa" to "Spanish",
+        "fre" to "French",
+        "ger" to "German",
+        "ita" to "Italian",
+        "por" to "Portuguese",
+        "dut" to "Dutch",
+        "jpn" to "Japanese",
+        "kor" to "Korean",
+        "chi" to "Chinese",
+        "hin" to "Hindi",
+        "nep" to "Nepali",
+        "ara" to "Arabic",
+        "rus" to "Russian",
+    )

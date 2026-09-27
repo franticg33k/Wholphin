@@ -18,6 +18,14 @@ interface TvModeHost {
         audio: Boolean = false,
     ): String
 
+    /** URL of an item's subtitle track [index], converted by the server to [format] ("vtt" or "ass"). */
+    fun subtitleUrl(
+        itemId: String,
+        mediaSourceId: String?,
+        index: Int,
+        format: String,
+    ): String
+
     /**
      * URL of an item's image ("Logo", "Backdrop", "Primary"), scaled to at most [maxHeight] pixels. Jellyfin serves
      * images without authentication, so the URL can go straight to the image loader.

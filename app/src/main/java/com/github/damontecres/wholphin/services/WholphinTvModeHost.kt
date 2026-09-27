@@ -14,6 +14,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jellyfin.sdk.api.client.ApiClient
 import org.jellyfin.sdk.api.client.extensions.audioApi
+import org.jellyfin.sdk.api.client.extensions.subtitleApi
 import org.jellyfin.sdk.api.client.extensions.videosApi
 import java.io.IOException
 import java.util.UUID
@@ -79,6 +80,19 @@ class WholphinTvModeHost
                     static = true,
                 )
             }
+
+        override fun subtitleUrl(
+            itemId: String,
+            mediaSourceId: String?,
+            index: Int,
+            format: String,
+        ): String =
+            api.subtitleApi.getSubtitleUrl(
+                routeItemId = UUID.fromString(itemId.toDashedUuid()),
+                routeMediaSourceId = mediaSourceId ?: itemId,
+                routeIndex = index,
+                routeFormat = format,
+            )
 
         override fun imageUrl(
             itemId: String,

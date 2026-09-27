@@ -5,6 +5,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -28,12 +29,18 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.media3.common.Player
+import androidx.media3.common.text.Cue
+import androidx.media3.common.text.CueGroup
+import androidx.media3.ui.SubtitleView
 import androidx.media3.ui.compose.PlayerSurface
 import androidx.media3.ui.compose.SURFACE_TYPE_SURFACE_VIEW
 import androidx.media3.ui.compose.modifiers.resizeWithContentScale
 import androidx.media3.ui.compose.state.rememberPresentationState
+import androidx.tv.material3.Text
 import com.github.damontecres.wholphin.tvmode.core.ChannelKind
 import com.github.damontecres.wholphin.tvmode.ui.BreakCard
 import com.github.damontecres.wholphin.tvmode.ui.ClassicOverlay
@@ -195,6 +202,7 @@ fun CableTvScreen(
             if (state.digits.isNotEmpty()) {
                 DigitOverlay(state.digits, state.digitSlots, state.digitError, Modifier.align(Alignment.TopStart).padding(32.dp))
             }
+            state.notice?.let { NoticeChip(it, Modifier.align(Alignment.TopEnd).padding(32.dp)) }
             if (state.paused) PausedScreensaver(state.channel)
             if (state.stillWatching) StillWatchingPrompt(state.stillWatchingUntilMs, clock)
             if (state.signedOff) SignedOffCard(state.channel)
@@ -294,12 +302,36 @@ private fun VideoSurface(
 ) {
     // Letterbox or pillarbox to the video's own aspect ratio (pixel aspect included) instead of stretching.
     val presentation = rememberPresentationState(player)
+    var cues by remember(player) { mutableStateOf<List<Cue>>(emptyList()) }
+    DisposableEffect(player) {
+        val listener =
+            object : Player.Listener {
+                override fun onCues(cueGroup: CueGroup) {
+                    cues = cueGroup.cues
+                }
+            }
+        player.addListener(listener)
+        onDispose { player.removeListener(listener) }
+    }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        PlayerSurface(
-            player = player,
-            surfaceType = SURFACE_TYPE_SURFACE_VIEW,
-            modifier = Modifier.resizeWithContentScale(scale, presentation.videoSizeDp),
-        )
+        Box(Modifier.resizeWithContentScale(scale, presentation.videoSizeDp)) {
+            PlayerSurface(
+                player = player,
+                surfaceType = SURFACE_TYPE_SURFACE_VIEW,
+                modifier = Modifier.fillMaxSize(),
+            )
+            // Subtitles over the picture, in the viewer's caption style (Android accessibility settings).
+            AndroidView(
+                factory = { context ->
+                    SubtitleView(context).apply {
+                        setUserDefaultStyle()
+                        setUserDefaultTextSize()
+                    }
+                },
+                update = { it.setCues(cues) },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
     }
 }
 
@@ -397,6 +429,11 @@ private fun handleKey(
             true
         }
 
+        Key.Captions, Key.C -> {
+            viewModel.toggleSubtitles()
+            true
+        }
+
         Key.LastChannel -> {
             viewModel.lastChannel()
             true
@@ -422,3 +459,18 @@ private fun digitOf(key: Key): Int? =
         Key.Nine, Key.NumPad9 -> 9
         else -> null
     }
+
+/** A short message in the corner, such as "Subtitles on". */
+@Composable
+private fun NoticeChip(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier
+            .background(Color(0xCC000000), RoundedCornerShape(8.dp))
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+    ) {
+        Text(text, color = Color.White, fontSize = 18.sp)
+    }
+}

@@ -35,7 +35,80 @@ internal data class JellyfinStreamDto(
     @SerialName("Channels") val channels: Int? = null,
     @SerialName("ChannelLayout") val channelLayout: String? = null,
     @SerialName("IsDefault") val isDefault: Boolean = false,
+    @SerialName("Index") val index: Int? = null,
+    @SerialName("Language") val language: String? = null,
+    @SerialName("DisplayTitle") val displayTitle: String? = null,
+    @SerialName("IsExternal") val isExternal: Boolean = false,
+    @SerialName("IsForced") val isForced: Boolean = false,
 )
+
+/** A subtitle track of an item, from Jellyfin's media streams. */
+data class SubtitleInfo(
+    /** Jellyfin's stream index (for the subtitle URL of an external track). */
+    val index: Int,
+    /** ISO 639-2 language, for example "eng", or null. */
+    val language: String?,
+    val label: String?,
+    /** For example "subrip", "ass" or "PGSSUB". */
+    val codec: String?,
+    /** In a separate file: the player has to load it next to the video. */
+    val external: Boolean,
+    val forced: Boolean,
+    val isDefault: Boolean,
+) {
+    /** Text formats Jellyfin can serve as WebVTT or ASS for the player to load. */
+    val loadable: Boolean
+        get() = codec?.lowercase() in setOf("subrip", "srt", "ass", "ssa", "webvtt", "vtt", "mov_text", "text", "microdvd", "subviewer")
+
+    /** ASS/SSA keeps its styling when served as ASS; everything else is served as WebVTT. */
+    val format: String
+        get() = if (codec?.lowercase() in setOf("ass", "ssa")) "ass" else "vtt"
+}
+
+/** Language codes as Jellyfin and players write them: "en", "eng" and bibliographic codes like "ger" match. */
+object SubtitleLanguages {
+    private val bibliographic =
+        mapOf(
+            "deu" to "ger",
+            "fra" to "fre",
+            "zho" to "chi",
+            "nld" to "dut",
+            "ces" to "cze",
+            "ell" to "gre",
+            "fas" to "per",
+            "ron" to "rum",
+            "slk" to "slo",
+            "msa" to "may",
+            "sqi" to "alb",
+            "hye" to "arm",
+            "eus" to "baq",
+            "mya" to "bur",
+            "kat" to "geo",
+            "isl" to "ice",
+            "mkd" to "mac",
+            "mri" to "mao",
+            "bod" to "tib",
+            "cym" to "wel",
+        )
+
+    /** Every spelling of a language code: its ISO 639-1, 639-2/T and 639-2/B forms where known. */
+    fun variants(code: String): Set<String> {
+        val c = code.trim().lowercase()
+        if (c.isEmpty()) return emptySet()
+        val out = mutableSetOf(c)
+        runCatching { java.util.Locale.forLanguageTag(c) }.getOrNull()?.let { locale ->
+            locale.language.takeIf { it.isNotEmpty() }?.let(out::add)
+            runCatching { locale.isO3Language }.getOrNull()?.takeIf { it.isNotEmpty() }?.let(out::add)
+        }
+        bibliographic.forEach { (t, b) -> if (t in out || b in out) out += listOf(t, b) }
+        return out
+    }
+
+    fun matches(
+        trackLanguage: String?,
+        wanted: String,
+    ): Boolean = trackLanguage != null && variants(trackLanguage).intersect(variants(wanted)).isNotEmpty()
+}
 
 /** What the guide shows about a programme beyond the schedule. */
 data class ItemDetails(
@@ -56,6 +129,8 @@ data class ItemDetails(
     val logoItemId: String?,
     /** Item whose Backdrop image to show, or null. */
     val backdropItemId: String?,
+    /** The item's subtitle tracks. */
+    val subtitles: List<SubtitleInfo> = emptyList(),
 )
 
 internal fun JellyfinItemDto.toDetails(): ItemDetails {
@@ -96,6 +171,10 @@ internal fun JellyfinItemDto.toDetails(): ItemDetails {
                 backdropImageTags.isNotEmpty() -> id
                 parentBackdropImageTags.isNotEmpty() -> parentBackdropItemId
                 else -> null
+            },
+        subtitles =
+            mediaStreams.filter { it.type == "Subtitle" && it.index != null }.map {
+                SubtitleInfo(it.index!!, it.language, it.displayTitle, it.codec, it.isExternal, it.isForced, it.isDefault)
             },
     )
 }
