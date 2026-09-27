@@ -45,6 +45,13 @@ These are the only places a sync can conflict (about 44 lines in total):
 | `preferences/AppPreference.kt` | the default update URL is this fork's latest release, so in-app updates come from here |
 | `services/PlayerFactory.kt` | optional `loadControl` parameter on `createVideoPlayer` (TV mode starts playback after less buffering) |
 
+### Fork-only resources
+
+`app/src/default/res/` holds the fork's launcher icon and TV banner: upstream's cube with a small retro-TV badge, and
+"CABLE TV" under the wordmark. Android lays the `default` flavor's resources over `main`, so upstream's icon files
+are untouched and merge as usual. If upstream redraws its icon, regenerate these from the new artwork so they don't
+fall out of step.
+
 ## Syncing with upstream
 
 **Automatically:** the *Sync upstream* workflow runs every Monday (or from the Actions tab):
