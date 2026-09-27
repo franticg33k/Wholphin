@@ -9,11 +9,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import com.github.damontecres.wholphin.tvmode.core.GuideEntry
 import com.github.damontecres.wholphin.tvmode.core.ItemDetails
+import com.github.damontecres.wholphin.tvmode.core.SlotKind
 import com.github.damontecres.wholphin.tvmode.core.TvChannel
+import com.github.damontecres.wholphin.tvmode.core.TvSlot
+import com.github.damontecres.wholphin.tvmode.core.WeatherDay
+import com.github.damontecres.wholphin.tvmode.core.WeatherHour
+import com.github.damontecres.wholphin.tvmode.core.WeatherNow
+import com.github.damontecres.wholphin.tvmode.core.WeatherReport
 import com.github.damontecres.wholphin.tvmode.ui.BreakCard
 import com.github.damontecres.wholphin.tvmode.ui.ClassicOverlay
 import com.github.damontecres.wholphin.tvmode.ui.ColorBars
@@ -24,6 +31,7 @@ import com.github.damontecres.wholphin.tvmode.ui.FourThreeFrame
 import com.github.damontecres.wholphin.tvmode.ui.GuideModel
 import com.github.damontecres.wholphin.tvmode.ui.LineupOverlay
 import com.github.damontecres.wholphin.tvmode.ui.LocalTvTheme
+import com.github.damontecres.wholphin.tvmode.ui.MusicScreen
 import com.github.damontecres.wholphin.tvmode.ui.OverlayData
 import com.github.damontecres.wholphin.tvmode.ui.PausedScreensaver
 import com.github.damontecres.wholphin.tvmode.ui.RatingBug
@@ -31,10 +39,13 @@ import com.github.damontecres.wholphin.tvmode.ui.RetroGuide
 import com.github.damontecres.wholphin.tvmode.ui.SatelliteOverlay
 import com.github.damontecres.wholphin.tvmode.ui.SearchSheet
 import com.github.damontecres.wholphin.tvmode.ui.StillWatchingPrompt
+import com.github.damontecres.wholphin.tvmode.ui.ThemeEditorDialog
+import com.github.damontecres.wholphin.tvmode.ui.TrailerPanel
 import com.github.damontecres.wholphin.tvmode.ui.TuningSplash
 import com.github.damontecres.wholphin.tvmode.ui.TvTheme
 import com.github.damontecres.wholphin.tvmode.ui.UpNextCard
 import com.github.damontecres.wholphin.tvmode.ui.Watermark
+import com.github.damontecres.wholphin.tvmode.ui.WeatherScreen
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -226,6 +237,96 @@ class TvModeScreenshots {
             render("guide-${theme.name.lowercase()}", theme) {
                 RetroGuide(guideModel(TvModeSettings(theme = theme)), preview = { ColorBars(Modifier.fillMaxSize()) })
             }
+        }
+    }
+
+    private val weather =
+        WeatherReport(
+            location = "Chicago",
+            updatedUtc = "2026-09-26T16:00:00Z",
+            current = WeatherNow(68.4, 67.1, 55, 9.3, "SW", 30.01, 2, "Partly cloudy"),
+            daily =
+                listOf(
+                    WeatherDay("2026-09-26", 74.2, 58.1, 2, "Pt Cloudy", 10),
+                    WeatherDay("2026-09-27", 65.0, 52.3, 61, "Lt Rain", 80),
+                    WeatherDay("2026-09-28", 61.0, 49.0, 3, "Cloudy", 20),
+                    WeatherDay("2026-09-29", 70.0, 55.0, 0, "Sunny", 0),
+                    WeatherDay("2026-09-30", 72.0, 57.0, 1, "M Sunny", 5),
+                ),
+            hourly =
+                (11..18).map {
+                    WeatherHour(
+                        "2026-09-26T%02d:00".format(it),
+                        60.0 + it,
+                        if (it >
+                            15
+                        ) {
+                            61
+                        } else {
+                            2
+                        },
+                        if (it > 15) 60 else 10,
+                    )
+                },
+            sunrise = "06:47",
+            sunset = "18:44",
+        )
+
+    @Test
+    fun specialChannels() {
+        for (page in 0..2) {
+            render("weather-page$page") {
+                WeatherScreen(
+                    channels[3],
+                    weather,
+                    null,
+                    mutableStateOf(page * 10_000L + 1_790_000_000_000L - (1_790_000_000_000L % 30_000)),
+                    false,
+                    false,
+                    Modifier.fillMaxSize(),
+                )
+            }
+        }
+        val song =
+            TvSlot(
+                id = "m1",
+                kind = SlotKind.PROGRAM,
+                startMs = now,
+                endMs = now + 240_000,
+                itemId = null,
+                mediaSourceId = null,
+                inPointMs = 0,
+                outPointMs = 240_000,
+                title = "Bohemian Holiday",
+                episode = null,
+                episodeTitle = null,
+                guideGroup = "g",
+                premiere = false,
+                lineup = null,
+                audio = true,
+                artist = "The Test Band",
+                album = "Greatest Hits",
+            )
+        render("music") { MusicScreen(channels[2], song, { _, _, _ -> "" }, false, Modifier.fillMaxSize()) }
+        render("trailer-panel") {
+            ColorBars(Modifier.fillMaxSize())
+            TrailerPanel(
+                song.copy(audio = false, trailer = true, title = "Starship Harbor"),
+                TrailerTarget(channels[2], rows[2].entries[0], airingNow = true),
+                false,
+            )
+        }
+    }
+
+    @Test
+    fun themeEditor() {
+        val custom = CustomTheme(1, "Sunset", TvThemeId.RETRO, mapOf("accent" to 0xFFFF9F43, "background" to 0xFF2A1A3A))
+        render("theme-editor-backdrop") {
+            RetroGuide(guideModel(TvModeSettings()), preview = { ColorBars(Modifier.fillMaxSize()) })
+            ThemeEditorDialog(listOf(custom), TvThemeId.RETRO, { 2 }, {}, {}, {}, {})
+        }
+        compose.onNode(isDialog()).captureToImage().asAndroidBitmap().let { bitmap ->
+            File("build/screenshots/theme-editor.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         }
     }
 

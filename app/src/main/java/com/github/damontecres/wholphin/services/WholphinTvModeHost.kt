@@ -13,6 +13,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jellyfin.sdk.api.client.ApiClient
+import org.jellyfin.sdk.api.client.extensions.audioApi
 import org.jellyfin.sdk.api.client.extensions.videosApi
 import java.io.IOException
 import java.util.UUID
@@ -63,12 +64,21 @@ class WholphinTvModeHost
         override fun streamUrl(
             itemId: String,
             mediaSourceId: String?,
+            audio: Boolean,
         ): String =
-            api.videosApi.getVideoStreamUrl(
-                itemId = UUID.fromString(itemId.toDashedUuid()),
-                mediaSourceId = mediaSourceId,
-                static = true,
-            )
+            if (audio) {
+                api.audioApi.getAudioStreamUrl(
+                    itemId = UUID.fromString(itemId.toDashedUuid()),
+                    mediaSourceId = mediaSourceId,
+                    static = true,
+                )
+            } else {
+                api.videosApi.getVideoStreamUrl(
+                    itemId = UUID.fromString(itemId.toDashedUuid()),
+                    mediaSourceId = mediaSourceId,
+                    static = true,
+                )
+            }
 
         override fun imageUrl(
             itemId: String,

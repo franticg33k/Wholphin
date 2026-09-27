@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -33,6 +34,7 @@ import androidx.media3.ui.compose.PlayerSurface
 import androidx.media3.ui.compose.SURFACE_TYPE_SURFACE_VIEW
 import androidx.media3.ui.compose.modifiers.resizeWithContentScale
 import androidx.media3.ui.compose.state.rememberPresentationState
+import com.github.damontecres.wholphin.tvmode.core.ChannelKind
 import com.github.damontecres.wholphin.tvmode.ui.BreakCard
 import com.github.damontecres.wholphin.tvmode.ui.ClassicOverlay
 import com.github.damontecres.wholphin.tvmode.ui.CrtOverlay
@@ -43,6 +45,7 @@ import com.github.damontecres.wholphin.tvmode.ui.GuideModel
 import com.github.damontecres.wholphin.tvmode.ui.ImageUrls
 import com.github.damontecres.wholphin.tvmode.ui.LineupOverlay
 import com.github.damontecres.wholphin.tvmode.ui.LocalTvTheme
+import com.github.damontecres.wholphin.tvmode.ui.MusicScreen
 import com.github.damontecres.wholphin.tvmode.ui.OverlayData
 import com.github.damontecres.wholphin.tvmode.ui.PausedScreensaver
 import com.github.damontecres.wholphin.tvmode.ui.RatingBug
@@ -51,12 +54,17 @@ import com.github.damontecres.wholphin.tvmode.ui.SatelliteOverlay
 import com.github.damontecres.wholphin.tvmode.ui.SearchSheet
 import com.github.damontecres.wholphin.tvmode.ui.SettingsDialog
 import com.github.damontecres.wholphin.tvmode.ui.SignedOffCard
+import com.github.damontecres.wholphin.tvmode.ui.SoundFx
 import com.github.damontecres.wholphin.tvmode.ui.StillWatchingPrompt
+import com.github.damontecres.wholphin.tvmode.ui.ThemeEditorDialog
+import com.github.damontecres.wholphin.tvmode.ui.ThemeRoles
+import com.github.damontecres.wholphin.tvmode.ui.TrailerPanel
 import com.github.damontecres.wholphin.tvmode.ui.TuningSplash
 import com.github.damontecres.wholphin.tvmode.ui.TvText
 import com.github.damontecres.wholphin.tvmode.ui.TvTheme
 import com.github.damontecres.wholphin.tvmode.ui.UpNextCard
 import com.github.damontecres.wholphin.tvmode.ui.Watermark
+import com.github.damontecres.wholphin.tvmode.ui.WeatherScreen
 
 /**
  * TV mode. Full screen: Up/Down or Channel +/- change channel, digits tune by number, OK or Back opens the guide,
@@ -80,10 +88,18 @@ fun CableTvScreen(
     var showSearch by remember { mutableStateOf(false) }
     val backState = remember { BackPress() }
     val images = remember(viewModel) { ImageUrls(viewModel::imageUrl) }
+    val customThemes by viewModel.customThemes.collectAsState()
+    var showThemeEditor by remember { mutableStateOf(false) }
     val theme =
-        remember(settings.theme, settings.accent, settings.focus) {
-            TvTheme.of(settings.theme).customized(settings.accent.argb, settings.focus.argb)
+        remember(settings.theme, settings.accent, settings.focus, settings.customTheme, customThemes) {
+            val custom = customThemes.firstOrNull { it.id == settings.customTheme }
+            val base = custom?.let { ThemeRoles.apply(TvTheme.of(it.base), it.colors) } ?: TvTheme.of(settings.theme)
+            base.customized(settings.accent.argb, settings.focus.argb)
         }
+    val sounds = remember { SoundFx() }
+    DisposableEffect(Unit) { onDispose { sounds.release() } }
+    LaunchedEffect(state.channel?.id) { if (settings.uiSounds && state.channel != null) sounds.channelChange() }
+    LaunchedEffect(state.showGuide) { if (settings.uiSounds && state.showGuide) sounds.guideOpen() }
 
     // One video surface, moved between full screen and the guide's preview window without being recreated.
     val video =
@@ -93,6 +109,19 @@ fun CableTvScreen(
     val picture: @Composable (Boolean, ContentScale) -> Unit = { compact, scale ->
         Box(Modifier.fillMaxSize()) {
             video?.invoke(scale)
+            if (state.channel?.kind == ChannelKind.WEATHER) {
+                WeatherScreen(state.channel, state.weather, state.weatherError, clock, settings.clock24h, compact, Modifier.fillMaxSize())
+                return@Box
+            }
+            state.playing?.takeIf { it.audio && !state.showStatic }?.let {
+                MusicScreen(
+                    state.channel,
+                    it,
+                    images,
+                    compact,
+                    Modifier.fillMaxSize(),
+                )
+            }
             val breakUntil = state.breakUntilMs
             if (state.showStatic || state.loading) {
                 if (breakUntil != null && settings.breakScreens && !state.loading) {
@@ -147,6 +176,7 @@ fun CableTvScreen(
                             onSettings = { showSettings = true },
                             onExit = viewModel::exit,
                             onSearch = { showSearch = true },
+                            serviceName = state.serviceName,
                             sleepLabel = sleepLabel(state.sleepAtMs, state.nowMs),
                             onSleep = viewModel::cycleSleep,
                         ),
@@ -175,12 +205,32 @@ fun CableTvScreen(
         }
 
         if (showSettings) {
-            SettingsDialog(settings, viewModel::updateSettings, onDismiss = { showSettings = false })
+            SettingsDialog(
+                settings,
+                viewModel::updateSettings,
+                onDismiss = { showSettings = false },
+                customThemes = customThemes,
+                onEditThemes = {
+                    showSettings = false
+                    showThemeEditor = true
+                },
+            )
+        }
+        if (showThemeEditor) {
+            ThemeEditorDialog(
+                themes = customThemes,
+                currentBase = settings.theme,
+                nextId = viewModel::nextThemeId,
+                onSave = viewModel::saveTheme,
+                onDelete = viewModel::deleteTheme,
+                onUse = { id -> viewModel.updateSettings { it.copy(customTheme = id) } },
+                onDismiss = { showThemeEditor = false },
+            )
         }
     }
 
-    LaunchedEffect(state.showGuide, showSettings) {
-        if (!state.showGuide && !showSettings) runCatching { focusRequester.requestFocus() }
+    LaunchedEffect(state.showGuide, showSettings, showThemeEditor) {
+        if (!state.showGuide && !showSettings && !showThemeEditor) runCatching { focusRequester.requestFocus() }
         if (!state.showGuide) showSearch = false
     }
 }
@@ -203,6 +253,7 @@ private fun FullScreen(
     CrtOverlay(settings.scanlines, settings.vignette && settings.displayMode != DisplayMode.BEZEL)
 
     val playing = !state.showStatic && !state.loading
+    state.playing?.takeIf { it.trailer && playing && !state.showBanner }?.let { TrailerPanel(it, state.trailerTarget, settings.clock24h) }
     if (playing) {
         Watermark(state.channel, settings.watermark, settings.watermarkCorner, settings.watermarkOpacity, clock)
         if (settings.featurePresentation) FeaturePresentationCard(state.programStart, clock)
@@ -319,7 +370,19 @@ private fun handleKey(
             true
         }
 
-        Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.Guide, Key.Menu -> {
+        Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+            // On a trailer whose show is on now, OK tunes there.
+            if (state.playing?.trailer == true &&
+                state.trailerTarget?.airingNow == true
+            ) {
+                viewModel.tuneToTrailerTarget()
+            } else {
+                viewModel.toggleGuide()
+            }
+            true
+        }
+
+        Key.Guide, Key.Menu -> {
             viewModel.toggleGuide()
             true
         }

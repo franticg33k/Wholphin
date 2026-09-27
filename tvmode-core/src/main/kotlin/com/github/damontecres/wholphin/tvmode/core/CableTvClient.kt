@@ -110,6 +110,9 @@ class CableTvClient(
         return dto.channels.map { c -> ChannelGuide(c.channelId, c.scheduleVersion, c.programs.map { it.toEntry() }) }
     }
 
+    /** A weather channel's forecast. */
+    suspend fun weather(channelId: String): WeatherReport = fetch("CableTv/Weather/$channelId", emptyMap()) { null }
+
     suspend fun presentation(): PresentationDto = fetch("CableTv/Presentation", emptyMap()) { null }
 
     /** Programme details from Jellyfin itself, for the guide's info panel and the player overlay. */

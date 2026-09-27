@@ -77,4 +77,6 @@ git push origin cable-tv
 ## Builds
 
 The *Cable TV build* workflow builds every push to `cable-tv` and every PR into it, runs the TV mode tests, and
-attaches the debug APKs to the run (Actions → the run → Artifacts). Upstream's own *PR* workflow also runs on PRs.
+attaches debug and release APKs to the run (Actions → the run → Artifacts). Release APKs use the
+`KEY_ALIAS`, `KEY_PASSWORD`, `KEY_STORE_PASSWORD` and `SIGNING_KEY` secrets when set (base64 keystore in
+`SIGNING_KEY`), otherwise a throwaway debug key, so builds can't update each other until the secrets are added. Upstream's own *PR* workflow also runs on PRs.

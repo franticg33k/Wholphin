@@ -11,10 +11,11 @@ interface TvModeHost {
     /** Authenticated GET requests to the current server. */
     val transport: CableTvTransport
 
-    /** A direct-play (static) stream URL for an item's media source. */
+    /** A direct-play (static) stream URL for an item's media source; [audio] for music. */
     fun streamUrl(
         itemId: String,
         mediaSourceId: String?,
+        audio: Boolean = false,
     ): String
 
     /**

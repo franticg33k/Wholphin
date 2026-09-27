@@ -1,5 +1,8 @@
 # Fork-only workflow (not in upstream Wholphin): builds the cable-tv branch and PRs into it, runs the Cable TV mode
-# tests, and uploads the debug APKs so they can be downloaded from the run's summary page.
+# tests, and uploads debug and release APKs so they can be downloaded from the run's summary page.
+# Release APKs are signed with the repository's KEY_ALIAS / KEY_PASSWORD / KEY_STORE_PASSWORD / SIGNING_KEY secrets
+# (the same ones upstream's release workflow uses) when they are set, otherwise with a throwaway debug key: those
+# install fine but can't update each other, so set the secrets for a stable signature.
 name: Cable TV build
 
 on:
@@ -35,4 +38,53 @@ jobs:
         with:
           name: wholphin-cable-tv-debug-${{ github.run_number }}
           path: app/build/outputs/apk/default/debug/*.apk
+          retention-days: 30
+
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Setup
+        uses: ./.github/actions/setup
+      - name: Build release
+        env:
+          KEY_ALIAS: "${{ secrets.KEY_ALIAS }}"
+          KEY_PASSWORD: "${{ secrets.KEY_PASSWORD }}"
+          KEY_STORE_PASSWORD: "${{ secrets.KEY_STORE_PASSWORD }}"
+          SIGNING_KEY: "${{ secrets.SIGNING_KEY }}"
+        run: ./gradlew assembleDefaultRelease --no-daemon
+      - name: Sign with a debug key when no signing secrets are set
+        run: |
+          apksigner="$ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS_VERSION/apksigner"
+          for apk in app/build/outputs/apk/default/release/*.apk; do
+            if "$apksigner" verify "$apk" >/dev/null 2>&1; then
+              continue
+            fi
+            if [ ! -f debug.keystore ]; then
+              echo "::warning::No signing secrets set; release APKs are signed with a throwaway debug key"
+              keytool -genkeypair -keystore debug.keystore -storepass android -keypass android -alias androiddebugkey \
+                -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+            fi
+            "$apksigner" sign --ks debug.keystore --ks-pass pass:android --key-pass pass:android --out "$apk.signed" "$apk"
+            mv "$apk.signed" "$apk"
+          done
+      - name: Verify signatures
+        run: |
+          for apk in app/build/outputs/apk/default/release/*.apk; do
+            "$ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS_VERSION/apksigner" verify --print-certs "$apk"
+          done
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: wholphin-cable-tv-release-${{ github.run_number }}
+          path: app/build/outputs/apk/default/release/*.apk
+          retention-days: 30
+      - name: Upload mapping file
+        uses: actions/upload-artifact@v4
+        with:
+          name: wholphin-cable-tv-mapping-${{ github.run_number }}
+          path: app/build/outputs/mapping/defaultRelease/mapping.txt
           retention-days: 30

@@ -35,6 +35,8 @@ fun SettingsDialog(
     settings: TvModeSettings,
     onChange: ((TvModeSettings) -> TvModeSettings) -> Unit,
     onDismiss: () -> Unit,
+    customThemes: List<com.github.damontecres.wholphin.tvmode.CustomTheme> = emptyList(),
+    onEditThemes: () -> Unit = {},
 ) {
     val theme = LocalTvTheme.current
     val first = remember { FocusRequester() }
@@ -50,10 +52,44 @@ fun SettingsDialog(
             Spacer(Modifier.height(12.dp))
             LazyColumn {
                 item {
-                    SettingRow("Theme", settings.theme.label, Modifier.focusRequester(first)) {
-                        onChange { it.copy(theme = it.theme.next()) }
+                    val custom = customThemes.firstOrNull { it.id == settings.customTheme }
+                    SettingRow("Theme", custom?.name ?: settings.theme.label, Modifier.focusRequester(first)) {
+                        // Built-in themes, then custom ones, then round again.
+                        onChange {
+                            val index = customThemes.indexOfFirst { c -> c.id == it.customTheme }
+                            when {
+                                index >= 0 && index < customThemes.size - 1 -> {
+                                    it.copy(customTheme = customThemes[index + 1].id)
+                                }
+
+                                index >= 0 -> {
+                                    it.copy(
+                                        customTheme = -1,
+                                        theme =
+                                            com.github.damontecres.wholphin.tvmode.TvThemeId.entries
+                                                .first(),
+                                    )
+                                }
+
+                                it.theme.ordinal < com.github.damontecres.wholphin.tvmode.TvThemeId.entries.size - 1 -> {
+                                    it.copy(
+                                        theme = it.theme.next(),
+                                    )
+                                }
+
+                                customThemes.isNotEmpty() -> {
+                                    it.copy(customTheme = customThemes.first().id)
+                                }
+
+                                else -> {
+                                    it.copy(theme = it.theme.next())
+                                }
+                            }
+                        }
                     }
                 }
+                item { SettingRow("Edit themes", "Open ›") { onEditThemes() } }
+                item { SettingRow("Interface sounds", onOff(settings.uiSounds)) { onChange { it.copy(uiSounds = !it.uiSounds) } } }
                 item {
                     SettingRow(
                         "Player overlay",

@@ -83,6 +83,7 @@ class GuideModel(
     val onSettings: () -> Unit,
     val onExit: () -> Unit,
     val onSearch: () -> Unit = {},
+    val serviceName: String = "Cable TV",
     val sleepLabel: String = "SLEEP",
     val onSleep: () -> Unit = {},
 )
@@ -229,7 +230,7 @@ private fun TopBar(
         BarButton("SETTINGS", model.onSettings)
         BarButton("EXIT", model.onExit)
         Spacer(Modifier.weight(1f))
-        TvText("CABLE TV", size = 14.sp, bold = true, color = theme.accent)
+        TvText(model.serviceName.uppercase(), size = 14.sp, bold = true, color = theme.accent)
     }
 }
 
@@ -313,6 +314,10 @@ private fun InfoPanel(
             val status =
                 when {
                     notice != null -> notice
+
+                    entry.kind == "stream" && model.nowMs in entry.startMs until entry.endMs -> "Live stream · OK to watch"
+
+                    entry.kind == "generated" -> "Local weather, around the clock"
 
                     model.nowMs in entry.startMs until entry.endMs -> "On now · ${((entry.endMs - model.nowMs) / 60_000).coerceAtLeast(
                         0,
