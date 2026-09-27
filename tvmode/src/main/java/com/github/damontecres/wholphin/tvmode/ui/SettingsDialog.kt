@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.github.damontecres.wholphin.tvmode.SUBTITLE_LANGUAGES
 import com.github.damontecres.wholphin.tvmode.TvModeSettings
 
 /** TV mode settings: OK on a row cycles its value. */
@@ -90,6 +91,14 @@ fun SettingsDialog(
                 }
                 item { SettingRow("Edit themes", "Open ›") { onEditThemes() } }
                 item { SettingRow("Interface sounds", onOff(settings.uiSounds)) { onChange { it.copy(uiSounds = !it.uiSounds) } } }
+                item { SettingRow("Subtitles (CC key)", onOff(settings.subtitles)) { onChange { it.copy(subtitles = !it.subtitles) } } }
+                item {
+                    val languages = SUBTITLE_LANGUAGES
+                    val at = languages.indexOfFirst { it.first == settings.subtitleLanguage }.coerceAtLeast(0)
+                    SettingRow("Subtitle language", languages[at].second) {
+                        onChange { it.copy(subtitleLanguage = languages[(at + 1) % languages.size].first) }
+                    }
+                }
                 item {
                     SettingRow(
                         "Player overlay",

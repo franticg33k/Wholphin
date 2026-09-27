@@ -1,11 +1,15 @@
 package com.github.damontecres.wholphin.tvmode
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import com.github.damontecres.wholphin.tvmode.core.CableTvClient
 import com.github.damontecres.wholphin.tvmode.core.ChannelKind
 import com.github.damontecres.wholphin.tvmode.core.ChannelNavigator
@@ -16,6 +20,7 @@ import com.github.damontecres.wholphin.tvmode.core.ItemDetails
 import com.github.damontecres.wholphin.tvmode.core.PlayItem
 import com.github.damontecres.wholphin.tvmode.core.ScheduleCache
 import com.github.damontecres.wholphin.tvmode.core.SlotKind
+import com.github.damontecres.wholphin.tvmode.core.SubtitleLanguages
 import com.github.damontecres.wholphin.tvmode.core.TuneInPlanner
 import com.github.damontecres.wholphin.tvmode.core.TunePlan
 import com.github.damontecres.wholphin.tvmode.core.TvChannel
@@ -24,14 +29,21 @@ import com.github.damontecres.wholphin.tvmode.core.WeatherReport
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import kotlin.math.abs
 
@@ -88,6 +100,8 @@ data class CableTvUiState(
     /** A weather channel's forecast. */
     val weather: WeatherReport? = null,
     val weatherError: String? = null,
+    /** A short message on screen, such as "Subtitles on". */
+    val notice: String? = null,
 )
 
 /** Where a trailer's movie or series airs next. */
@@ -175,6 +189,10 @@ class CableTvViewModel
                     if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) markProgramStart(slot)
                 }
 
+                override fun onTracksChanged(tracks: Tracks) {
+                    pickSubtitleTrack(tracks)
+                }
+
                 override fun onRenderedFirstFrame() {
                     _state.update { it.copy(showStatic = false) }
                 }
@@ -201,6 +219,13 @@ class CableTvViewModel
         init {
             viewModelScope.launch { start() }
             viewModelScope.launch { tick() }
+            viewModelScope.launch {
+                settings
+                    .map { it.subtitles to it.subtitleLanguage }
+                    .distinctUntilChanged()
+                    .drop(1)
+                    .collect { subtitlesChanged() }
+            }
         }
 
         private suspend fun start() {
@@ -222,6 +247,7 @@ class CableTvViewModel
                 }
                 val player = host.createPlayer()
                 player.addListener(listener)
+                applySubtitleSettings(player)
                 player.playWhenReady = true
                 _player.value = player
                 _state.update { it.copy(loading = false) }
@@ -419,6 +445,7 @@ class CableTvViewModel
                     }
                     when (val plan = TuneInPlanner.plan(cache.slotsFrom(channel.id, client.clock.nowMs()), client.clock.nowMs())) {
                         is TunePlan.Play -> {
+                            if (settings.value.subtitles) prefetchSubtitles(plan.items.take(2))
                             queued = plan.items
                             player.setMediaItems(plan.items.map(::toMediaItem), 0, plan.startPositionMs)
                             player.prepare()
@@ -547,6 +574,7 @@ class CableTvViewModel
             if (more.isNotEmpty()) {
                 queued = queued.dropWhile { it.slot.endMs <= playing.startMs } + more
                 player.addMediaItems(more.map(::toMediaItem))
+                if (settings.value.subtitles) viewModelScope.launch { attachSubtitles(more) }
             }
         }
 
@@ -555,6 +583,7 @@ class CableTvViewModel
                 .Builder()
                 .setUri(host.streamUrl(item.slot.itemId!!, item.slot.mediaSourceId, item.slot.audio))
                 .setMediaId(item.slot.id)
+                .setSubtitleConfigurations(externalSubtitles(item.slot))
                 .setClippingConfiguration(
                     MediaItem.ClippingConfiguration
                         .Builder()
@@ -565,6 +594,136 @@ class CableTvViewModel
                 .build()
 
         private fun MediaItem.slot(): TvSlot? = localConfiguration?.tag as? TvSlot
+
+        // ---- subtitles ----
+        // Embedded tracks come with the file; external ones (a .srt next to the video) are loaded next to it, served
+        // by Jellyfin as WebVTT (or ASS, keeping its styling). Which track shows is the player's track selection.
+
+        private var noticeJob: Job? = null
+
+        /** Turns subtitles on or off (the CC key). */
+        fun toggleSubtitles() {
+            val on = !settings.value.subtitles
+            updateSettings { it.copy(subtitles = on) }
+            noticeJob?.cancel()
+            _state.update { it.copy(notice = if (on) "Subtitles on" else "Subtitles off") }
+            noticeJob =
+                viewModelScope.launch {
+                    delay(NOTICE_MS)
+                    _state.update { it.copy(notice = null) }
+                }
+        }
+
+        private fun subtitleLanguage(): String =
+            settings.value.subtitleLanguage.ifBlank {
+                runCatching {
+                    java.util.Locale
+                        .getDefault()
+                        .isO3Language
+                }.getOrNull() ?: java.util.Locale
+                    .getDefault()
+                    .language
+            }
+
+        private fun applySubtitleSettings(player: Player) {
+            val on = settings.value.subtitles
+            player.trackSelectionParameters =
+                player.trackSelectionParameters
+                    .buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !on)
+                    .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                    .setPreferredTextLanguage(if (on) subtitleLanguage() else null)
+                    .setSelectUndeterminedTextLanguage(on)
+                    .build()
+        }
+
+        private suspend fun subtitlesChanged() {
+            val player = _player.value ?: return
+            applySubtitleSettings(player)
+            if (!settings.value.subtitles) return
+            // Switched on mid-programme: a programme with an external subtitle file needs it loaded, so tune again.
+            val slot = _state.value.playing ?: return
+            slot.itemId?.let { loadDetails(it) }
+            val loaded =
+                player.currentMediaItem
+                    ?.localConfiguration
+                    ?.subtitleConfigurations
+                    .orEmpty()
+            if (loaded.isEmpty() && externalSubtitles(slot).isNotEmpty()) navigator.current?.let(::tune)
+        }
+
+        /**
+         * With subtitles on but nothing selected (no track in the preferred language, none flagged default), shows the
+         * first full track rather than nothing.
+         */
+        private fun pickSubtitleTrack(tracks: Tracks) {
+            val player = _player.value ?: return
+            if (!settings.value.subtitles) return
+            val text = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT && it.isSupported }
+            if (text.isEmpty() || text.any { it.isSelected }) return
+            val full = text.filter { (it.mediaTrackGroup.getFormat(0).selectionFlags and C.SELECTION_FLAG_FORCED) == 0 }
+            val pick =
+                full.firstOrNull { SubtitleLanguages.matches(it.mediaTrackGroup.getFormat(0).language, subtitleLanguage()) }
+                    ?: full.firstOrNull()
+                    ?: return
+            player.trackSelectionParameters =
+                player.trackSelectionParameters
+                    .buildUpon()
+                    .setOverrideForType(TrackSelectionOverride(pick.mediaTrackGroup, 0))
+                    .build()
+        }
+
+        private fun externalSubtitles(slot: TvSlot): List<MediaItem.SubtitleConfiguration> {
+            if (!settings.value.subtitles || slot.audio) return emptyList()
+            val itemId = slot.itemId ?: return emptyList()
+            val tracks = _details.value[itemId]?.subtitles ?: return emptyList()
+            return tracks.filter { it.external && it.loadable }.map { track ->
+                var flags = 0
+                if (track.forced) flags = flags or C.SELECTION_FLAG_FORCED
+                if (track.isDefault) flags = flags or C.SELECTION_FLAG_DEFAULT
+                MediaItem.SubtitleConfiguration
+                    .Builder(Uri.parse(host.subtitleUrl(itemId, slot.mediaSourceId, track.index, track.format)))
+                    .setId("e:${track.index}")
+                    .setMimeType(if (track.format == "ass") MimeTypes.TEXT_SSA else MimeTypes.TEXT_VTT)
+                    .setLanguage(track.language)
+                    .setLabel(track.label)
+                    .setSelectionFlags(flags)
+                    .build()
+            }
+        }
+
+        /** Loads the subtitle tracks of the first programmes before they're queued, waiting a moment at most. */
+        private suspend fun prefetchSubtitles(items: List<PlayItem>) {
+            val ids =
+                items.filterNot { it.slot.audio }.mapNotNull { it.slot.itemId }.distinct().filterNot {
+                    _details.value.containsKey(
+                        it,
+                    )
+                }
+            if (ids.isEmpty()) return
+            withTimeoutOrNull(SUBTITLE_WAIT_MS) { coroutineScope { ids.map { async { loadDetails(it) } }.awaitAll() } }
+        }
+
+        /** Programmes queued behind the current one get their external subtitles once their details arrive. */
+        private suspend fun attachSubtitles(items: List<PlayItem>) {
+            items
+                .filterNot { it.slot.audio }
+                .mapNotNull { it.slot.itemId }
+                .distinct()
+                .forEach { loadDetails(it) }
+            val player = _player.value ?: return
+            for (item in items) {
+                if (externalSubtitles(item.slot).isEmpty()) continue
+                val index = (0 until player.mediaItemCount).firstOrNull { player.getMediaItemAt(it).mediaId == item.slot.id } ?: continue
+                val loaded =
+                    player
+                        .getMediaItemAt(index)
+                        .localConfiguration
+                        ?.subtitleConfigurations
+                        .orEmpty()
+                if (index > player.currentMediaItemIndex && loaded.isEmpty()) player.replaceMediaItem(index, toMediaItem(item))
+            }
+        }
 
         private fun showNowAndNext(slot: TvSlot) {
             val channel = navigator.current ?: return
@@ -766,6 +925,8 @@ class CableTvViewModel
             private const val NEIGHBOURS = 2
             private const val WEATHER_REFRESH_MS = 10 * 60_000L
             private const val JUST_STARTED_MS = 3_000L
+            private const val NOTICE_MS = 2_500L
+            private const val SUBTITLE_WAIT_MS = 800L
             private const val STILL_WATCHING_MS = 60_000L
             private val SLEEP_STEPS = listOf(15, 30, 60, 90, 120)
             private const val TICK_MS = 500L
