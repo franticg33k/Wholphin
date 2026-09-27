@@ -36,6 +36,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+      - name: Fetch upstream's version tags
+        # The app's version comes from `git describe --match=v*`; the fork doesn't carry upstream's tags.
+        run: git fetch --no-recurse-submodules --tags https://github.com/damontecres/Wholphin.git || true
       - name: Setup
         uses: ./.github/actions/setup
       - name: Build and test
@@ -56,6 +59,9 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+      - name: Fetch upstream's version tags
+        # The app's version comes from `git describe --match=v*`; the fork doesn't carry upstream's tags.
+        run: git fetch --no-recurse-submodules --tags https://github.com/damontecres/Wholphin.git || true
       - name: Setup
         uses: ./.github/actions/setup
       - name: Build release
