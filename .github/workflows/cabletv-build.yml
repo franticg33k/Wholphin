@@ -107,24 +107,30 @@ jobs:
       - name: Name the APKs for the release
         if: github.ref == 'refs/heads/cable-tv' && github.event_name != 'pull_request'
         run: |
+          # Asset names and the release title follow what the app's update checker looks for:
+          # Wholphin-release-<abi>.apk or Wholphin.apk, and a title that is exactly the version name.
           mkdir -p release-apks
           for apk in app/build/outputs/apk/default/release/*.apk; do
-            # Wholphin-default-release-1.0.8-19-g9cceb319-59-arm64-v8a.apk => Wholphin-CableTV-arm64-v8a.apk
+            # Wholphin-default-release-1.0.8-19-g9cceb319-59-arm64-v8a.apk => Wholphin-release-arm64-v8a.apk
             abi=$(basename "$apk" .apk | sed -nE 's/.*-[0-9]+-(armeabi-v7a|arm64-v8a|x86_64)$/\1/p')
-            cp "$apk" "release-apks/Wholphin-CableTV${abi:+-$abi}.apk"
+            if [ -n "$abi" ]; then
+              cp "$apk" "release-apks/Wholphin-release-$abi.apk"
+            else
+              cp "$apk" "release-apks/Wholphin.apk"
+            fi
           done
           (cd release-apks && sha256sum *.apk > SHA256SUMS.txt)
-          version=$(basename "$(ls app/build/outputs/apk/default/release/*.apk | head -1)" .apk | sed -E 's/^Wholphin-default-release-//; s/-(armeabi-v7a|arm64-v8a|x86_64)$//')
+          version=$(git describe --tags --long --match='v*' 2>/dev/null || echo v0.0.0)
           echo "APP_VERSION=$version" >> "$GITHUB_ENV"
           {
-            echo "Wholphin with Cable TV mode, built from \`cable-tv\` at ${GITHUB_SHA::7} (version $version)."
+            echo "Wholphin with Cable TV mode, built from \`cable-tv\` at ${GITHUB_SHA::7}."
             echo
-            echo "- **Wholphin-CableTV.apk**: universal, works on any device."
-            echo "- **Wholphin-CableTV-arm64-v8a.apk**: most Android TV boxes and Google TV / Shield."
-            echo "- **Wholphin-CableTV-armeabi-v7a.apk**: older 32-bit devices (many Fire TV sticks)."
-            echo "- **Wholphin-CableTV-x86_64.apk**: emulators."
+            echo "- **Wholphin.apk**: universal, works on any device."
+            echo "- **Wholphin-release-arm64-v8a.apk**: most Android TV boxes, Google TV and Shield."
+            echo "- **Wholphin-release-armeabi-v7a.apk**: older 32-bit devices (many Fire TV sticks)."
+            echo "- **Wholphin-release-x86_64.apk**: emulators."
             echo
-            echo "It uses the same app ID as Wholphin, so uninstall another Wholphin build (e.g. from the Play Store) before installing it."
+            echo "Installs as **Wholphin Cable TV**, next to the regular Wholphin app. It checks this repository for updates."
             if [ "${DEBUG_SIGNED:-}" = "true" ]; then
               echo
               echo "Signed with a throwaway key because the repository has no signing secrets: uninstall the previous build before installing this one."
@@ -137,7 +143,7 @@ jobs:
         run: |
           gh release delete cable-tv-latest --cleanup-tag --yes || true
           gh release create cable-tv-latest release-apks/* --target "$GITHUB_SHA" --latest \
-            --title "Cable TV (latest build)" --notes-file release-notes.md
+            --title "$APP_VERSION" --notes-file release-notes.md
       - name: Publish a permanent release
         if: github.ref == 'refs/heads/cable-tv' && github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
         env:

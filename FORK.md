@@ -30,18 +30,19 @@ Rules for any change in this fork:
 
 ### Upstream files this fork changes
 
-These are the only places a sync can conflict (about 41 lines in total):
+These are the only places a sync can conflict (about 44 lines in total):
 
 | File | Change |
 |---|---|
 | `settings.gradle.kts` | `include(":tvmode-core")`, `include(":tvmode")` |
 | `gradle/libs.versions.toml` | `kotlinx-coroutines-core` library entry |
-| `app/build.gradle.kts` | `implementation(project(":tvmode"))`; `git describe` ignores a missing tag (can be dropped once the fork has upstream's tags, which the sync workflow copies) |
+| `app/build.gradle.kts` | `implementation(project(":tvmode"))`; `git describe` ignores a missing tag (can be dropped once the fork has upstream's tags, which the sync workflow copies); `applicationId` is `com.github.damontecres.wholphin.cabletv`, so the fork installs next to upstream's app |
 | `ui/nav/Destination.kt` | `Destination.CableTv` |
 | `ui/nav/DestinationContent.kt` | branch rendering `CableTvScreen` |
 | `ui/nav/NavDrawer.kt` | `NavDrawerItem.CableTv` and its cases in three `when` blocks |
 | `services/NavDrawerService.kt` | adds the item when `CableTvAvailability` says the plugin is there |
-| `res/values/strings.xml` | `cable_tv` string |
+| `res/values/strings.xml` | `cable_tv` string; `app_name` is "Wholphin Cable TV" |
+| `preferences/AppPreference.kt` | the default update URL is this fork's latest release, so in-app updates come from here |
 | `services/PlayerFactory.kt` | optional `loadControl` parameter on `createVideoPlayer` (TV mode starts playback after less buffering) |
 
 ## Syncing with upstream
@@ -77,9 +78,36 @@ git push origin cable-tv
 ## Builds
 
 The *Cable TV build* workflow builds every push to `cable-tv` and every PR into it, runs the TV mode tests, and
-attaches debug and release APKs to the run (Actions → the run → Artifacts). Each push to `cable-tv` also
-replaces the [`cable-tv-latest` release](https://github.com/franticg33k/Wholphin/releases/tag/cable-tv-latest) with the new release APKs, so the newest
-build is always at `https://github.com/franticg33k/Wholphin/releases/latest/download/Wholphin-CableTV.apk` (or `-arm64-v8a`, `-armeabi-v7a`, `-x86_64`).
-Running the workflow by hand on `cable-tv` with a tag (for example `cable-tv-1.0`) also publishes a permanent release. Release APKs use the
-`KEY_ALIAS`, `KEY_PASSWORD`, `KEY_STORE_PASSWORD` and `SIGNING_KEY` secrets when set (base64 keystore in
-`SIGNING_KEY`), otherwise a throwaway debug key, so builds can't update each other until the secrets are added. Upstream's own *PR* workflow also runs on PRs.
+attaches debug and release APKs to the run (Actions → the run → Artifacts).
+
+Each push to `cable-tv` also replaces the latest GitHub release (tag `cable-tv-latest`, titled with the version,
+such as `v1.0.8-27-g1a729c57`) with the new release APKs, so the newest build is always at
+`https://github.com/franticg33k/Wholphin/releases/latest/download/Wholphin.apk` (or
+`Wholphin-release-arm64-v8a.apk`, `-armeabi-v7a`, `-x86_64`). These names and the title are what the app's update
+checker reads, so installed copies offer each new build as an update. Running the workflow by hand on `cable-tv` with
+a tag (for example `cable-tv-1.0`) also publishes a permanent release. Upstream's own *PR* workflow also runs on PRs.
+
+### Signing
+
+Release APKs are signed with the repository secrets `KEY_ALIAS`, `KEY_PASSWORD`, `KEY_STORE_PASSWORD` and
+`SIGNING_KEY`. Without them CI uses a throwaway key per build, so one build can't update another (in-app or by hand).
+To set them up once:
+
+```sh
+# 1. Make a keystore (answer the prompts; remember the password). PKCS12 uses one password for store and key.
+keytool -genkeypair -v -keystore wholphin-cabletv.keystore -storetype PKCS12 \
+  -alias cabletv -keyalg RSA -keysize 4096 -validity 36500
+
+# 2. Base64 it on one line (macOS: base64 -i wholphin-cabletv.keystore | tr -d '\n')
+base64 -w0 wholphin-cabletv.keystore > wholphin-cabletv.keystore.b64
+```
+
+3. On GitHub: **Settings → Secrets and variables → Actions → New repository secret**, four times:
+   `SIGNING_KEY` = the contents of the `.b64` file, `KEY_ALIAS` = `cabletv`, and `KEY_PASSWORD` and
+   `KEY_STORE_PASSWORD` = the password. With the GitHub CLI:
+   `gh secret set SIGNING_KEY -R franticg33k/Wholphin < wholphin-cabletv.keystore.b64` (and `gh secret set KEY_ALIAS`
+   etc., which prompt for the value).
+4. Keep the keystore and password somewhere safe and never commit them. If the key is lost, installed copies can't
+   update and have to be reinstalled.
+
+The next build is signed with it; builds signed with the throwaway key have to be uninstalled once.
