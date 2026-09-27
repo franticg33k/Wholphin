@@ -3,6 +3,8 @@
 # Release APKs are signed with the repository's KEY_ALIAS / KEY_PASSWORD / KEY_STORE_PASSWORD / SIGNING_KEY secrets
 # (the same ones upstream's release workflow uses) when they are set, otherwise with a throwaway debug key: those
 # install fine but can't update each other, so set the secrets for a stable signature.
+# Every push to cable-tv also replaces the "cable-tv-latest" GitHub release with the new release APKs, and a
+# manual run can publish a permanent release under a tag of your choice.
 name: Cable TV build
 
 on:
@@ -13,6 +15,11 @@ on:
     branches:
       - cable-tv
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Also publish a permanent release with this tag (e.g. cable-tv-1.0, not v*, which upstream uses); leave empty for none"
+        required: false
+        default: ""
 
 defaults:
   run:
@@ -42,6 +49,8 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout the code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -65,6 +74,7 @@ jobs:
             fi
             if [ ! -f debug.keystore ]; then
               echo "::warning::No signing secrets set; release APKs are signed with a throwaway debug key"
+              echo "DEBUG_SIGNED=true" >> "$GITHUB_ENV"
               keytool -genkeypair -keystore debug.keystore -storepass android -keypass android -alias androiddebugkey \
                 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
             fi
@@ -88,3 +98,45 @@ jobs:
           name: wholphin-cable-tv-mapping-${{ github.run_number }}
           path: app/build/outputs/mapping/defaultRelease/mapping.txt
           retention-days: 30
+      - name: Name the APKs for the release
+        if: github.ref == 'refs/heads/cable-tv' && github.event_name != 'pull_request'
+        run: |
+          mkdir -p release-apks
+          for apk in app/build/outputs/apk/default/release/*.apk; do
+            # Wholphin-default-release-1.0.8-19-g9cceb319-59-arm64-v8a.apk => Wholphin-CableTV-arm64-v8a.apk
+            abi=$(basename "$apk" .apk | sed -nE 's/.*-[0-9]+-(armeabi-v7a|arm64-v8a|x86_64)$/\1/p')
+            cp "$apk" "release-apks/Wholphin-CableTV${abi:+-$abi}.apk"
+          done
+          (cd release-apks && sha256sum *.apk > SHA256SUMS.txt)
+          version=$(basename "$(ls app/build/outputs/apk/default/release/*.apk | head -1)" .apk | sed -E 's/^Wholphin-default-release-//; s/-(armeabi-v7a|arm64-v8a|x86_64)$//')
+          echo "APP_VERSION=$version" >> "$GITHUB_ENV"
+          {
+            echo "Wholphin with Cable TV mode, built from \`cable-tv\` at ${GITHUB_SHA::7} (version $version)."
+            echo
+            echo "- **Wholphin-CableTV.apk**: universal, works on any device."
+            echo "- **Wholphin-CableTV-arm64-v8a.apk**: most Android TV boxes and Google TV / Shield."
+            echo "- **Wholphin-CableTV-armeabi-v7a.apk**: older 32-bit devices (many Fire TV sticks)."
+            echo "- **Wholphin-CableTV-x86_64.apk**: emulators."
+            echo
+            echo "It uses the same app ID as Wholphin, so uninstall another Wholphin build (e.g. from the Play Store) before installing it."
+            if [ "${DEBUG_SIGNED:-}" = "true" ]; then
+              echo
+              echo "Signed with a throwaway key because the repository has no signing secrets: uninstall the previous build before installing this one."
+            fi
+          } > release-notes.md
+      - name: Publish the cable-tv-latest release
+        if: github.ref == 'refs/heads/cable-tv' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete cable-tv-latest --cleanup-tag --yes || true
+          gh release create cable-tv-latest release-apks/* --target "$GITHUB_SHA" --latest \
+            --title "Cable TV (latest build)" --notes-file release-notes.md
+      - name: Publish a permanent release
+        if: github.ref == 'refs/heads/cable-tv' && github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          gh release create "$RELEASE_TAG" release-apks/* --target "$GITHUB_SHA" --latest=false \
+            --title "Cable TV $RELEASE_TAG" --notes-file release-notes.md
