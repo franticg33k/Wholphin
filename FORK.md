@@ -78,8 +78,8 @@ git push origin cable-tv
 
 The *Cable TV build* workflow builds every push to `cable-tv` and every PR into it, runs the TV mode tests, and
 attaches debug and release APKs to the run (Actions → the run → Artifacts). Each push to `cable-tv` also
-replaces the [`cable-tv-latest` release](../../releases/tag/cable-tv-latest) with the new release APKs, so the newest
-build is always at `releases/latest/download/Wholphin-CableTV.apk` (or `-arm64-v8a`, `-armeabi-v7a`, `-x86_64`).
+replaces the [`cable-tv-latest` release](https://github.com/franticg33k/Wholphin/releases/tag/cable-tv-latest) with the new release APKs, so the newest
+build is always at `https://github.com/franticg33k/Wholphin/releases/latest/download/Wholphin-CableTV.apk` (or `-arm64-v8a`, `-armeabi-v7a`, `-x86_64`).
 Running the workflow by hand on `cable-tv` with a tag (for example `cable-tv-1.0`) also publishes a permanent release. Release APKs use the
 `KEY_ALIAS`, `KEY_PASSWORD`, `KEY_STORE_PASSWORD` and `SIGNING_KEY` secrets when set (base64 keystore in
 `SIGNING_KEY`), otherwise a throwaway debug key, so builds can't update each other until the secrets are added. Upstream's own *PR* workflow also runs on PRs.
