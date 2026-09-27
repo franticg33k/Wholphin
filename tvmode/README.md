@@ -33,8 +33,8 @@ The app touches very little so rebasing on upstream stays easy:
 
 ## Screens
 
-The layout follows a study of classic cable-guide apps (behaviour and layout only; every asset is
-original or openly licensed).
+Inspired by NostalgiaTV, but written from scratch: none of its code or assets are used. The layout follows
+classic cable-guide apps in behaviour and layout only; every asset is original or openly licensed.
 
 - **Guide:** a top bar (Watch, Settings, Exit); an info panel with the focused programme's clear logo or title, the
   `S1E10 - Episode` line in the accent colour, times, channel, chips (air date, rating, quality, audio, runtime, NEW,
