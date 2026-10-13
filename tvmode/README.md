@@ -86,6 +86,8 @@ On Android TV and Google TV the app adds an **On now on Cable TV** row to the la
 channel (up to 12) with what it is airing, its time and what is next. Picking a tile opens the TV mode already tuned
 to that channel (`wholphin://cabletv?channel=<id>`; `wholphin://cabletv` opens the TV mode itself).
 
+- The row is titled **On now on <service name>**, using the service name set in the plugin's settings (default "Cable
+  TV"), so renaming the service there renames the row at the next refresh.
 - The row refreshes every 15 minutes in the background, and when the app starts. It uses Android's TV provider (the
   same mechanism as the app's own "Recently added" row), so Android asks you once to let it show on the home screen.
   Home screens that don't support preview rows ignore it.

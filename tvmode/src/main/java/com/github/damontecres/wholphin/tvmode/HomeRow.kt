@@ -1,6 +1,7 @@
 package com.github.damontecres.wholphin.tvmode
 
 import android.content.ContentUris
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -56,14 +57,17 @@ class HomeRowPublisher
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
                 context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
 
-        /** Replaces the row's tiles with [entries]. */
-        fun publish(entries: List<OnNowEntry>) {
+        /** Replaces the row's tiles with [entries]; [title] names the row ("On now on <service name>"). */
+        fun publish(
+            entries: List<OnNowEntry>,
+            title: String = context.getString(R.string.cable_tv_on_now),
+        ) {
             if (!supported) return
             if (entries.isEmpty()) {
                 remove()
                 return
             }
-            val channelId = ensureChannel() ?: return
+            val channelId = ensureChannel(title) ?: return
             val existing = programIds(channelId)
             val programs = entries.mapIndexed { index, entry -> program(channelId, entry, entries.size - index).toContentValues() }
             context.contentResolver.bulkInsert(TvContractCompat.PreviewPrograms.CONTENT_URI, programs.toTypedArray())
@@ -81,19 +85,31 @@ class HomeRowPublisher
             }
         }
 
-        private fun ensureChannel(): Long? {
+        private fun ensureChannel(title: String): Long? {
             val stored = prefs.getLong(KEY_CHANNEL, -1L)
-            if (stored >= 0 && channelExists(stored)) return stored
+            if (stored >= 0 && channelExists(stored)) {
+                // The service name can change in the plugin's settings.
+                if (prefs.getString(KEY_TITLE, null) != title) {
+                    val values = ContentValues().apply { put(TvContractCompat.Channels.COLUMN_DISPLAY_NAME, title) }
+                    runCatching { context.contentResolver.update(TvContractCompat.buildChannelUri(stored), values, null, null) }
+                    prefs.edit().putString(KEY_TITLE, title).apply()
+                }
+                return stored
+            }
             val channel =
                 Channel
                     .Builder()
                     .setType(TvContractCompat.Channels.TYPE_PREVIEW)
-                    .setDisplayName(context.getString(R.string.cable_tv_on_now))
+                    .setDisplayName(title)
                     .setAppLinkIntent(linkIntent(null))
                     .build()
             val uri = context.contentResolver.insert(TvContractCompat.Channels.CONTENT_URI, channel.toContentValues()) ?: return null
             val id = ContentUris.parseId(uri)
-            prefs.edit().putLong(KEY_CHANNEL, id).apply()
+            prefs
+                .edit()
+                .putLong(KEY_CHANNEL, id)
+                .putString(KEY_TITLE, title)
+                .apply()
             // Asks the user to let the row show on the home screen (Android asks once).
             runCatching { TvContractCompat.requestChannelBrowsable(context, id) }
             return id
@@ -164,6 +180,7 @@ class HomeRowPublisher
 
         private companion object {
             const val KEY_CHANNEL = "channel"
+            const val KEY_TITLE = "title"
             const val PICTURE_HEIGHT = 360
         }
     }
@@ -202,7 +219,13 @@ class HomeRowWorker
                             com.github.damontecres.wholphin.tvmode.core
                                 .ChannelGuide(s.channelId, s.scheduleVersion, Guide.entries(s.slots))
                         }
-                publisher.publish(HomeRow.onNow(channels, guides, now))
+                // "On now on <the service name set in the plugin>", the plugin's default being "Cable TV".
+                val service = runCatching { client.presentation().serviceName }.getOrNull()?.takeIf { it.isNotBlank() }
+                publisher.publish(
+                    HomeRow.onNow(channels, guides, now),
+                    service?.let { applicationContext.getString(R.string.cable_tv_on_now_service, it) }
+                        ?: applicationContext.getString(R.string.cable_tv_on_now),
+                )
                 Result.success()
             } catch (e: IOException) {
                 Result.retry()
