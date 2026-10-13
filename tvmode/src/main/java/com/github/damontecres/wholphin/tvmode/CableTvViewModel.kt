@@ -134,6 +134,9 @@ class CableTvViewModel
         val settings: StateFlow<TvModeSettings> = settingsStore.settings
         val customThemes: StateFlow<List<CustomTheme>> = settingsStore.customThemes
 
+        /** Ids of the favourite channels. */
+        val favourites: StateFlow<Set<String>> = settingsStore.favourites
+
         fun saveTheme(theme: CustomTheme) = settingsStore.saveTheme(theme)
 
         fun deleteTheme(id: Int) = settingsStore.deleteTheme(id)
@@ -239,6 +242,7 @@ class CableTvViewModel
                     return
                 }
                 navigator.update(channels)
+                applyFavourites()
                 _state.update { it.copy(digitSlots = channels.maxOf { c -> c.number.length }.coerceIn(1, 5)) }
                 viewModelScope.launch {
                     runCatching { withContext(Dispatchers.IO) { client.presentation() } }
@@ -343,6 +347,7 @@ class CableTvViewModel
         fun updateSettings(transform: (TvModeSettings) -> TvModeSettings) {
             val before = settingsStore.settings.value.homeRow
             settingsStore.update(transform)
+            applyFavourites()
             val after = settingsStore.settings.value.homeRow
             if (before != after) {
                 if (after) {
@@ -620,13 +625,44 @@ class CableTvViewModel
         fun toggleSubtitles() {
             val on = !settings.value.subtitles
             updateSettings { it.copy(subtitles = on) }
+            showNotice(if (on) "Subtitles on" else "Subtitles off")
+        }
+
+        /** Shows a short message in the corner. */
+        private fun showNotice(text: String) {
             noticeJob?.cancel()
-            _state.update { it.copy(notice = if (on) "Subtitles on" else "Subtitles off") }
+            _state.update { it.copy(notice = text) }
             noticeJob =
                 viewModelScope.launch {
                     delay(NOTICE_MS)
                     _state.update { it.copy(notice = null) }
                 }
+        }
+
+        // ---- favourites ----
+
+        /** Marks a channel as a favourite, or clears it ([channelId] defaults to the one on screen). */
+        fun toggleFavourite(channelId: String? = null) {
+            val channel = channelId?.let { id -> navigator.channels.firstOrNull { it.id == id } } ?: navigator.current ?: return
+            val added = settingsStore.toggleFavourite(channel.id)
+            applyFavourites()
+            val label = "${channel.number} ${channel.name}"
+            showNotice(if (added) "★ $label added to favourites" else "$label removed from favourites")
+        }
+
+        /** Switches channel up/down between all channels and only the favourites. */
+        fun toggleFavouritesOnly() {
+            if (settingsStore.favourites.value.isEmpty() && !settings.value.favouritesOnly) {
+                showNotice("No favourite channels yet. Press * on a channel to add it.")
+                return
+            }
+            val only = !settings.value.favouritesOnly
+            updateSettings { it.copy(favouritesOnly = only) }
+            showNotice(if (only) "Channel up/down: favourites only" else "Channel up/down: all channels")
+        }
+
+        private fun applyFavourites() {
+            navigator.only = if (settings.value.favouritesOnly) settingsStore.favourites.value else emptySet()
         }
 
         private fun subtitleLanguage(): String =

@@ -1,8 +1,10 @@
 package com.github.damontecres.wholphin.tvmode.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -44,6 +46,7 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
@@ -61,6 +64,12 @@ import com.github.damontecres.wholphin.tvmode.core.TvChannel
 private const val HALF_HOUR_MS = 30 * 60_000L
 private const val WINDOW_SLOTS = 4
 private val CHANNEL_COLUMN = 170.dp
+
+/** The remote's * key. */
+internal val StarKey = Key(android.view.KeyEvent.KEYCODE_STAR)
+
+/** The guide tab that lists only the favourite channels. */
+const val FAVOURITES_TAB = "★ Favourites"
 
 /** What the guide shows and what it can do. The clock and details are states, read only where they're drawn. */
 @Stable
@@ -84,6 +93,8 @@ class GuideModel(
     val onExit: () -> Unit,
     val onSearch: () -> Unit = {},
     val serviceName: String = "Cable TV",
+    val favourites: Set<String> = emptySet(),
+    val onToggleFavourite: (String) -> Unit = {},
     val sleepLabel: String = "SLEEP",
     val onSleep: () -> Unit = {},
 )
@@ -111,7 +122,21 @@ fun RetroGuide(
     val initialCell = remember { FocusRequester() }
     val watchButton = remember { FocusRequester() }
 
-    Column(modifier.fillMaxSize().background(theme.background)) {
+    Column(
+        modifier
+            .fillMaxSize()
+            .background(theme.background)
+            .onKeyEvent { event ->
+                // * (or yellow) marks the focused channel as a favourite; holding OK on a programme does too.
+                val favouriteKey = event.key == Key.NumPadMultiply || event.key == StarKey || event.key == Key.ProgramYellow
+                if (event.type == KeyEventType.KeyDown && favouriteKey) {
+                    focused?.first?.id?.let(model.onToggleFavourite)
+                    true
+                } else {
+                    false
+                }
+            },
+    ) {
         Row(
             Modifier
                 .fillMaxWidth()
@@ -436,7 +461,7 @@ private fun GuideRowView(
             .height(if (detailed) 58.dp else 42.dp)
             .padding(vertical = 1.dp),
     ) {
-        ChannelCell(row.channel, focusedRow, model.settings.channelColumn)
+        ChannelCell(row.channel, focusedRow, model.settings.channelColumn, row.channel.id in model.favourites)
         var cursor = model.windowStartMs
         row.entries
             .filter { it.endMs > model.windowStartMs && it.startMs < windowEnd }
@@ -456,6 +481,7 @@ private fun GuideRowView(
                         windowEnd = windowEnd,
                         onFocus = { onFocus(entry) },
                         onClick = { onSelect(entry) },
+                        onLongClick = { model.onToggleFavourite(row.channel.id) },
                         modifier = if (airing && row.channel.id == model.current?.id) Modifier.focusRequester(initialCell) else Modifier,
                     )
                 }
@@ -468,6 +494,7 @@ private fun ChannelCell(
     channel: TvChannel,
     focusedRow: Boolean,
     style: ChannelColumnStyle,
+    favourite: Boolean = false,
 ) {
     val theme = LocalTvTheme.current
     Row(
@@ -491,12 +518,13 @@ private fun ChannelCell(
         }
         if (showLogo) ChannelLogo(channel, Modifier.padding(start = 6.dp).size(width = 50.dp, height = 30.dp))
         Column(Modifier.padding(horizontal = 8.dp)) {
-            TvText(channel.number, size = 15.sp, bold = true, color = theme.channelNumber)
+            TvText((if (favourite) "★ " else "") + channel.number, size = 15.sp, bold = true, color = theme.channelNumber)
             TvText(channel.name, size = 12.sp, color = theme.channelName)
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ProgramCell(
     entry: GuideEntry,
@@ -507,6 +535,7 @@ private fun ProgramCell(
     windowEnd: Long,
     onFocus: () -> Unit,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val theme = LocalTvTheme.current
@@ -548,7 +577,7 @@ private fun ProgramCell(
                     Key.DirectionLeft -> entry.startMs <= model.windowStartMs && model.onShift(-1)
                     else -> false
                 }
-            }.clickable(onClick = onClick),
+            }.combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
         Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
