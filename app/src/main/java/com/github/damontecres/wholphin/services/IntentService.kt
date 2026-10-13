@@ -6,6 +6,8 @@ import androidx.annotation.VisibleForTesting
 import com.github.damontecres.wholphin.data.RestoredSession
 import com.github.damontecres.wholphin.data.ServerRepository
 import com.github.damontecres.wholphin.data.model.BaseItem
+import com.github.damontecres.wholphin.tvmode.core.CableTvLaunch
+import com.github.damontecres.wholphin.tvmode.core.CableTvLinks
 import com.github.damontecres.wholphin.ui.detail.series.SeasonEpisodeIds
 import com.github.damontecres.wholphin.ui.nav.Destination
 import kotlinx.coroutines.flow.first
@@ -41,6 +43,12 @@ class IntentService
             val result = prepare(intent)
             if (result != null) {
                 return result
+            }
+
+            // A Cable TV link (the home screen row): open the TV mode, on the channel the link names
+            CableTvLinks.parse(intent.data?.toString())?.let { link ->
+                CableTvLaunch.request(link.channelId)
+                return IntentResult.Target(listOf(Destination.CableTv), addHomeToBackStack = true)
             }
 
             // Existence of this key implies launching from Play Next channel

@@ -30,7 +30,7 @@ Rules for any change in this fork:
 
 ### Upstream files this fork changes
 
-These are the only places a sync can conflict (about 44 lines in total):
+These are the only places a sync can conflict (about 52 lines in total):
 
 | File | Change |
 |---|---|
@@ -43,6 +43,7 @@ These are the only places a sync can conflict (about 44 lines in total):
 | `services/NavDrawerService.kt` | adds the item when `CableTvAvailability` says the plugin is there |
 | `res/values/strings.xml` | `cable_tv` string; `app_name` is "Wholphin Cable TV" |
 | `preferences/AppPreference.kt` | the default update URL is this fork's latest release, so in-app updates come from here |
+| `services/IntentService.kt` | a few lines that send a `wholphin://cabletv` link (the home screen row's tiles) to the TV mode |
 | `services/PlayerFactory.kt` | optional `loadControl` parameter on `createVideoPlayer` (TV mode starts playback after less buffering) |
 
 ### Fork-only resources

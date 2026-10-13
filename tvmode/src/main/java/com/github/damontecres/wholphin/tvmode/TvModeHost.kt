@@ -42,6 +42,12 @@ interface TvModeHost {
     /** Releases a player created by [createPlayer]. */
     fun releasePlayer(player: Player)
 
+    /**
+     * Makes sure a server session is active, restoring the last one when the app was started in the background (by
+     * the home screen row's refresh). False when there is no session to restore.
+     */
+    suspend fun ensureSignedIn(): Boolean = true
+
     /** Leaves TV mode (back to the previous page). */
     fun exit()
 }

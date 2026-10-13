@@ -60,6 +60,12 @@ dependencies {
     implementation(libs.androidx.hilt.navigation.compose)
     ksp(libs.hilt.android.compiler)
 
+    // The Android TV home screen row ("On now"), refreshed in the background.
+    implementation(libs.androidx.tvprovider)
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.hilt.work)
+    ksp(libs.androidx.hilt.compiler)
+
     testImplementation(libs.junit)
     // Screenshot renders of the TV mode screens (TvModeScreenshots), run on demand.
     testImplementation(libs.robolectric)
