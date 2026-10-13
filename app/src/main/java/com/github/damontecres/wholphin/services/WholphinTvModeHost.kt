@@ -2,6 +2,8 @@ package com.github.damontecres.wholphin.services
 
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.DefaultLoadControl
+import com.github.damontecres.wholphin.data.RestoredSession
+import com.github.damontecres.wholphin.data.ServerRepository
 import com.github.damontecres.wholphin.preferences.PlayerBackend
 import com.github.damontecres.wholphin.services.hilt.AuthOkHttpClient
 import com.github.damontecres.wholphin.tvmode.TvModeHost
@@ -33,7 +35,14 @@ class WholphinTvModeHost
         private val playerFactory: PlayerFactory,
         private val userPreferencesService: UserPreferencesService,
         private val navigationManager: NavigationManager,
+        private val serverRepository: ServerRepository,
     ) : TvModeHost {
+        override suspend fun ensureSignedIn(): Boolean {
+            if (!api.baseUrl.isNullOrBlank() && !api.accessToken.isNullOrBlank()) return true
+            // The home screen row refreshes in the background, possibly before the app has signed in.
+            return serverRepository.restoreLastSession() is RestoredSession.Success
+        }
+
         override val transport =
             CableTvTransport { path, query ->
                 val base = api.baseUrl ?: throw IOException("Not signed in to a server")

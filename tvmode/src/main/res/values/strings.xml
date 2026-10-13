@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Name of the Cable TV row on the Android TV home screen -->
+    <string name="cable_tv_on_now">On now on Cable TV</string>
+    <!-- Same, with the service name set in the plugin (for example "Retro TV") -->
+    <string name="cable_tv_on_now_service">On now on %1$s</string>
+</resources>

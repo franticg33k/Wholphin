@@ -90,6 +90,12 @@ fun SettingsDialog(
                     }
                 }
                 item { SettingRow("Edit themes", "Open ›") { onEditThemes() } }
+                item {
+                    SettingRow(
+                        "Home screen row (what's on now)",
+                        onOff(settings.homeRow),
+                    ) { onChange { it.copy(homeRow = !it.homeRow) } }
+                }
                 item { SettingRow("Interface sounds", onOff(settings.uiSounds)) { onChange { it.copy(uiSounds = !it.uiSounds) } } }
                 item { SettingRow("Subtitles (CC key)", onOff(settings.subtitles)) { onChange { it.copy(subtitles = !it.subtitles) } } }
                 item {

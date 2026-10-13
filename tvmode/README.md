@@ -86,6 +86,21 @@ classic cable-guide apps in behaviour and layout only; every asset is original o
 - Channel logos come from the plugin (`logoUrl`); categories from each channel's plugin setting.
 - Video keeps its aspect ratio (pixel aspect included) instead of stretching.
 
+## Home screen row
+
+On Android TV and Google TV the app adds an **On now on Cable TV** row to the launcher's home screen: one tile per
+channel (up to 12) with what it is airing, its time and what is next. Picking a tile opens the TV mode already tuned
+to that channel (`wholphin://cabletv?channel=<id>`; `wholphin://cabletv` opens the TV mode itself).
+
+- The row is titled **On now on <service name>**, using the service name set in the plugin's settings (default "Cable
+  TV"), so renaming the service there renames the row at the next refresh.
+- The row refreshes every 15 minutes in the background, and when the app starts. It uses Android's TV provider (the
+  same mechanism as the app's own "Recently added" row), so Android asks you once to let it show on the home screen.
+  Home screens that don't support preview rows ignore it.
+- Turn it off in the TV mode settings (*Home screen row*), or hide it in the launcher's own settings.
+- Opening a tile from a cold start needs *Sign in automatically* turned on, the same as every other launch from the
+  home screen.
+
 ## How playback follows the schedule
 
 - The clock is the server's (`serverTime` on every response, kept from the lowest-latency sample), never the device's.
