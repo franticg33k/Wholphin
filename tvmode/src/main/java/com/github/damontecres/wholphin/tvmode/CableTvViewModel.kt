@@ -11,6 +11,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import com.github.damontecres.wholphin.tvmode.core.CableTvClient
+import com.github.damontecres.wholphin.tvmode.core.CableTvLaunch
 import com.github.damontecres.wholphin.tvmode.core.ChannelKind
 import com.github.damontecres.wholphin.tvmode.core.ChannelNavigator
 import com.github.damontecres.wholphin.tvmode.core.Guide
@@ -128,6 +129,7 @@ class CableTvViewModel
     constructor(
         private val host: TvModeHost,
         private val settingsStore: TvModeSettingsStore,
+        private val homeRow: HomeRowScheduler,
     ) : ViewModel() {
         val settings: StateFlow<TvModeSettings> = settingsStore.settings
         val customThemes: StateFlow<List<CustomTheme>> = settingsStore.customThemes
@@ -251,7 +253,9 @@ class CableTvViewModel
                 player.playWhenReady = true
                 _player.value = player
                 _state.update { it.copy(loading = false) }
-                navigator.current?.let { tune(it) }
+                // A deep link (the home screen row) can ask for a particular channel.
+                val requested = CableTvLaunch.take()?.let { navigator.tuneTo(it) }
+                (requested ?: navigator.current)?.let { tune(it) }
                 // Fetch the whole guide now, so opening it later is instant.
                 refreshGuide()
             } catch (e: Exception) {
@@ -336,7 +340,18 @@ class CableTvViewModel
             maxHeight: Int,
         ): String = host.imageUrl(itemId, type, maxHeight)
 
-        fun updateSettings(transform: (TvModeSettings) -> TvModeSettings) = settingsStore.update(transform)
+        fun updateSettings(transform: (TvModeSettings) -> TvModeSettings) {
+            val before = settingsStore.settings.value.homeRow
+            settingsStore.update(transform)
+            val after = settingsStore.settings.value.homeRow
+            if (before != after) {
+                if (after) {
+                    homeRow.ensureScheduled()
+                } else {
+                    homeRow.cancel()
+                }
+            }
+        }
 
         /** Back: from full screen it opens the guide; from the guide it leaves TV mode. */
         fun back() {

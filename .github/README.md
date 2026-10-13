@@ -26,6 +26,7 @@ regular Wholphin.
 - **Special channels**: live stream channels, a local weather channel, music channels with a now-playing screen,
   and "coming attractions" trailer channels.
 - **Remote-first**: channel up/down, number entry, last channel, a sleep timer and a pause screen.
+- **Home screen row**: an "On now on Cable TV" row on the Android TV launcher; pick a tile to tune straight to it.
 
 Details: [TV mode README](https://github.com/franticg33k/Wholphin/blob/cable-tv/tvmode/README.md).
 

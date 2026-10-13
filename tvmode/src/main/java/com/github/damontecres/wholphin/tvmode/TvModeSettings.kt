@@ -131,6 +131,8 @@ data class TvModeSettings(
     val subtitles: Boolean = false,
     /** Preferred subtitle language ("eng", ...); empty follows the device language. */
     val subtitleLanguage: String = "",
+    /** Show an "On now" row on the Android TV home screen. */
+    val homeRow: Boolean = true,
 )
 
 /** A theme made in the theme editor: a built-in theme with some colour roles replaced. */
@@ -236,6 +238,7 @@ class TvModeSettingsStore
                 .putBoolean("uiSounds", next.uiSounds)
                 .putBoolean("subtitles", next.subtitles)
                 .putString("subtitleLanguage", next.subtitleLanguage)
+                .putBoolean("homeRow", next.homeRow)
                 .apply()
         }
 
@@ -270,6 +273,7 @@ class TvModeSettingsStore
                 uiSounds = prefs.getBoolean("uiSounds", d.uiSounds),
                 subtitles = prefs.getBoolean("subtitles", d.subtitles),
                 subtitleLanguage = prefs.getString("subtitleLanguage", d.subtitleLanguage) ?: d.subtitleLanguage,
+                homeRow = prefs.getBoolean("homeRow", d.homeRow),
             )
         }
 
