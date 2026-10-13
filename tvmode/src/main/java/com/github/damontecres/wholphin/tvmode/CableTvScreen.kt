@@ -46,6 +46,7 @@ import com.github.damontecres.wholphin.tvmode.ui.BreakCard
 import com.github.damontecres.wholphin.tvmode.ui.ClassicOverlay
 import com.github.damontecres.wholphin.tvmode.ui.CrtOverlay
 import com.github.damontecres.wholphin.tvmode.ui.DigitOverlay
+import com.github.damontecres.wholphin.tvmode.ui.FAVOURITES_TAB
 import com.github.damontecres.wholphin.tvmode.ui.FeaturePresentationCard
 import com.github.damontecres.wholphin.tvmode.ui.FourThreeFrame
 import com.github.damontecres.wholphin.tvmode.ui.GuideModel
@@ -62,6 +63,7 @@ import com.github.damontecres.wholphin.tvmode.ui.SearchSheet
 import com.github.damontecres.wholphin.tvmode.ui.SettingsDialog
 import com.github.damontecres.wholphin.tvmode.ui.SignedOffCard
 import com.github.damontecres.wholphin.tvmode.ui.SoundFx
+import com.github.damontecres.wholphin.tvmode.ui.StarKey
 import com.github.damontecres.wholphin.tvmode.ui.StillWatchingPrompt
 import com.github.damontecres.wholphin.tvmode.ui.ThemeEditorDialog
 import com.github.damontecres.wholphin.tvmode.ui.ThemeRoles
@@ -160,12 +162,22 @@ fun CableTvScreen(
                     }.focusable(),
         ) {
             if (state.showGuide) {
-                val categories = state.guide.mapNotNull { it.channel.category }.distinct()
+                val favourites by viewModel.favourites.collectAsState()
+                val categories =
+                    (if (favourites.isNotEmpty()) listOf(FAVOURITES_TAB) else emptyList()) +
+                        state.guide.mapNotNull { it.channel.category }.distinct()
                 val selected = guideCategory?.takeIf { it in categories }
                 RetroGuide(
                     model =
                         GuideModel(
-                            rows = if (selected == null) state.guide else state.guide.filter { it.channel.category == selected },
+                            rows =
+                                when (selected) {
+                                    null -> state.guide
+                                    FAVOURITES_TAB -> state.guide.filter { it.channel.id in favourites }
+                                    else -> state.guide.filter { it.channel.category == selected }
+                                },
+                            favourites = favourites,
+                            onToggleFavourite = viewModel::toggleFavourite,
                             categories = categories,
                             category = selected,
                             current = state.channel,
@@ -431,6 +443,17 @@ private fun handleKey(
 
         Key.Captions, Key.C -> {
             viewModel.toggleSubtitles()
+            true
+        }
+
+        // * (or yellow) marks the channel as a favourite; # (or blue) limits up/down to favourites.
+        Key.NumPadMultiply, StarKey, Key.ProgramYellow -> {
+            viewModel.toggleFavourite()
+            true
+        }
+
+        Key.Pound, Key.ProgramBlue -> {
+            viewModel.toggleFavouritesOnly()
             true
         }
 

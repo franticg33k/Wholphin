@@ -57,4 +57,45 @@ class ChannelNavigatorTest {
 
         assertEquals("b", nav.current?.id)
     }
+
+    @Test
+    fun upAndDownVisitOnlyFavourites() {
+        val nav = ChannelNavigator(channels)
+        nav.only = setOf("a", "c")
+
+        assertEquals("c", nav.down()?.id)
+        assertEquals("a", nav.down()?.id)
+        assertEquals("c", nav.up()?.id)
+    }
+
+    @Test
+    fun steppingFromANonFavouriteJoinsTheFavourites() {
+        val nav = ChannelNavigator(channels)
+        nav.tuneTo("b")
+        nav.only = setOf("a", "c")
+
+        assertEquals("c", nav.up()?.id)
+
+        nav.tuneTo("b")
+        assertEquals("a", nav.down()?.id)
+    }
+
+    @Test
+    fun favouritesThatNoLongerExistDontStrandTheViewer() {
+        val nav = ChannelNavigator(channels)
+        nav.only = setOf("gone")
+
+        assertEquals("b", nav.up()?.id)
+    }
+
+    @Test
+    fun numberEntryStillReachesNonFavourites() {
+        val nav = ChannelNavigator(channels)
+        nav.only = setOf("a")
+
+        nav.typeDigit(0)
+        nav.typeDigit(0)
+        nav.typeDigit(1)
+        assertEquals("b", nav.typeDigit(0)?.id)
+    }
 }

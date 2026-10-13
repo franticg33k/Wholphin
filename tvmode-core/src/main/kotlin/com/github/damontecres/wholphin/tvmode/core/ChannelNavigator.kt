@@ -12,6 +12,12 @@ class ChannelNavigator(
     var current: TvChannel? = channels.firstOrNull()
         private set
 
+    /**
+     * Channel up/down visit only these channels (favourites) when any of them exist. Other channels can still be
+     * tuned by number, from the guide, or as the current channel.
+     */
+    var only: Set<String> = emptySet()
+
     private var previous: TvChannel? = null
     private val digits = StringBuilder()
 
@@ -67,8 +73,10 @@ class ChannelNavigator(
 
     private fun step(delta: Int): TvChannel? {
         if (channels.isEmpty()) return null
-        val index = channels.indexOfFirst { it.id == current?.id }.coerceAtLeast(0)
-        val next = channels[Math.floorMod(index + delta, channels.size)]
-        return tune(next)
+        val favourites = channels.filter { it.id in only }
+        // Stepping from a channel that isn't a favourite goes to the next favourite in that direction.
+        val pool = if (favourites.isEmpty()) channels else channels.filter { it.id in only || it.id == current?.id }
+        val index = pool.indexOfFirst { it.id == current?.id }.coerceAtLeast(0)
+        return tune(pool[Math.floorMod(index + delta, pool.size)])
     }
 }

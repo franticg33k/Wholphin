@@ -131,6 +131,8 @@ data class TvModeSettings(
     val subtitles: Boolean = false,
     /** Preferred subtitle language ("eng", ...); empty follows the device language. */
     val subtitleLanguage: String = "",
+    /** Channel up/down visit only the favourite channels (when there are any). */
+    val favouritesOnly: Boolean = false,
 )
 
 /** A theme made in the theme editor: a built-in theme with some colour roles replaced. */
@@ -152,6 +154,20 @@ class TvModeSettingsStore
         private val prefs = context.getSharedPreferences("cable_tv_mode", Context.MODE_PRIVATE)
         private val _settings = MutableStateFlow(load())
         val settings: StateFlow<TvModeSettings> = _settings.asStateFlow()
+
+        private val _favourites = MutableStateFlow(prefs.getStringSet("favouriteChannels", emptySet()).orEmpty().toSet())
+
+        /** Ids of the channels marked as favourites on this TV. */
+        val favourites: StateFlow<Set<String>> = _favourites.asStateFlow()
+
+        /** Adds [channelId] to the favourites, or removes it. @return true when it is a favourite now. */
+        fun toggleFavourite(channelId: String): Boolean {
+            val now = _favourites.value
+            val next = if (channelId in now) now - channelId else now + channelId
+            _favourites.value = next
+            prefs.edit().putStringSet("favouriteChannels", next.toSet()).apply()
+            return channelId in next
+        }
 
         private val _customThemes = MutableStateFlow(loadThemes())
         val customThemes: StateFlow<List<CustomTheme>> = _customThemes.asStateFlow()
@@ -236,6 +252,7 @@ class TvModeSettingsStore
                 .putBoolean("uiSounds", next.uiSounds)
                 .putBoolean("subtitles", next.subtitles)
                 .putString("subtitleLanguage", next.subtitleLanguage)
+                .putBoolean("favouritesOnly", next.favouritesOnly)
                 .apply()
         }
 
@@ -270,6 +287,7 @@ class TvModeSettingsStore
                 uiSounds = prefs.getBoolean("uiSounds", d.uiSounds),
                 subtitles = prefs.getBoolean("subtitles", d.subtitles),
                 subtitleLanguage = prefs.getString("subtitleLanguage", d.subtitleLanguage) ?: d.subtitleLanguage,
+                favouritesOnly = prefs.getBoolean("favouritesOnly", d.favouritesOnly),
             )
         }
 

@@ -100,6 +100,11 @@ fun SettingsDialog(
                     }
                 }
                 item {
+                    SettingRow("Channel up/down: favourites only (* key)", onOff(settings.favouritesOnly)) {
+                        onChange { it.copy(favouritesOnly = !it.favouritesOnly) }
+                    }
+                }
+                item {
                     SettingRow(
                         "Player overlay",
                         settings.overlayStyle.label,

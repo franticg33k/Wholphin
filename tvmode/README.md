@@ -30,6 +30,8 @@ The app touches very little so rebasing on upstream stays easy:
 | Long press Back, Last | Previous channel | |
 | Play/Pause | Pause (a "broadcast paused" screensaver); any key rejoins live | |
 | CC (Captions) | Subtitles on/off | |
+| `*` (or yellow) | Mark this channel as a favourite, or clear it | Same, for the channel in focus (holding OK on a programme does too) |
+| `#` (or blue) | Channel up/down: favourites only, or all channels | |
 | Guide / Menu | Open the guide | Close the guide |
 
 ## Screens
@@ -64,6 +66,10 @@ classic cable-guide apps in behaviour and layout only; every asset is original o
   programme's track in the preferred language (Settings → Subtitle language; "Device language" by default), or its
   first full track if none matches. Embedded tracks (SRT, ASS with styling, PGS) and external subtitle files next to
   the video both work. They're drawn in the caption style from Android's accessibility settings.
+- **Favourites:** mark channels with `*` (or yellow, or hold OK on a programme in the guide). Favourites show a ★ in
+  the guide and get their own **★ Favourites** tab. `#` (or Settings → *Channel up/down: favourites only*) makes
+  channel up/down visit only the favourites; typing a number or using the guide still reaches every channel. They are
+  kept on the device.
 - **Interface sounds:** optional soft clicks for moving, selecting and changing channel (generated, no audio files).
 - **Branding:** the guide's top bar shows the service name set in the plugin (default "Cable TV").
 - **Settings** (Settings in the guide, kept on the device): theme, accent and focus colours, logo on screen, rating
