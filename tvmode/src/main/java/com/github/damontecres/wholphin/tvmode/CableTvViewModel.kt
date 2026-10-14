@@ -358,9 +358,16 @@ class CableTvViewModel
             }
         }
 
-        /** Back: from full screen it opens the guide; from the guide it leaves TV mode. */
+        /**
+         * Back: from full screen it opens the guide; from the guide it returns to full screen. It leaves TV mode only
+         * when the user turned on "Back closes TV mode"; otherwise the guide's CLOSE button does.
+         */
         fun back() {
-            if (_state.value.showGuide) exit() else toggleGuide()
+            when {
+                !_state.value.showGuide -> toggleGuide()
+                settings.value.backExits -> exit()
+                else -> closeGuide()
+            }
         }
 
         /** Loads a programme's details once the guide's focus has rested on it briefly. */

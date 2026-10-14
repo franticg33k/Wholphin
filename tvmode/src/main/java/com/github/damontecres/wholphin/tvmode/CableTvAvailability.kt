@@ -2,6 +2,8 @@ package com.github.damontecres.wholphin.tvmode
 
 import com.github.damontecres.wholphin.tvmode.core.CableTvClient
 import com.github.damontecres.wholphin.tvmode.core.CableTvHttpException
+import com.github.damontecres.wholphin.tvmode.core.HomeRowPolicy
+import com.github.damontecres.wholphin.tvmode.core.RowAction
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -21,20 +23,20 @@ class CableTvAvailability
          * (or taken away, on a server without Cable TV): it is the one place that knows the server has channels.
          */
         suspend fun isAvailable(): Boolean {
-            // Null when the server can't be reached: that says nothing about whether it has Cable TV.
-            val available =
-                try {
-                    CableTvClient(host.transport).channels().isNotEmpty()
-                } catch (e: CableTvHttpException) {
-                    // A 4xx means the server answered without the plugin; a 5xx says nothing.
-                    if (e.status < 500) false else null
-                } catch (e: Exception) {
-                    null
-                }
-            when {
-                available == true && settings.settings.value.homeRow -> homeRow.ensureScheduled()
-                available != null -> homeRow.cancel()
+            var status: Int? = null
+            var count: Int? = null
+            try {
+                count = CableTvClient(host.transport).channels().size
+            } catch (e: CableTvHttpException) {
+                status = e.status
+            } catch (e: Exception) {
+                // No answer (offline, not signed in yet): says nothing about whether the server has Cable TV.
             }
-            return available == true
+            when (HomeRowPolicy.afterAvailabilityCheck(status, count)) {
+                RowAction.PUBLISH -> if (settings.settings.value.homeRow) homeRow.ensureScheduled() else homeRow.cancel()
+                RowAction.REMOVE -> homeRow.cancel()
+                RowAction.KEEP -> Unit
+            }
+            return (count ?: 0) > 0
         }
     }

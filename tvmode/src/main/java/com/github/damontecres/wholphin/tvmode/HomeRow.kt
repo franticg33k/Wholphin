@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.text.format.DateFormat
+import android.util.Log
 import androidx.hilt.work.HiltWorker
 import androidx.tvprovider.media.tv.Channel
 import androidx.tvprovider.media.tv.PreviewProgram
@@ -25,7 +26,9 @@ import com.github.damontecres.wholphin.tvmode.core.CableTvClient
 import com.github.damontecres.wholphin.tvmode.core.CableTvLinks
 import com.github.damontecres.wholphin.tvmode.core.Guide
 import com.github.damontecres.wholphin.tvmode.core.HomeRow
+import com.github.damontecres.wholphin.tvmode.core.HomeRowPolicy
 import com.github.damontecres.wholphin.tvmode.core.OnNowEntry
+import com.github.damontecres.wholphin.tvmode.core.RowAction
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -185,6 +188,8 @@ class HomeRowPublisher
         }
     }
 
+private const val TAG = "CableTvHomeRow"
+
 /** Refreshes the home screen row from the server. */
 @HiltWorker
 class HomeRowWorker
@@ -206,30 +211,47 @@ class HomeRowWorker
                 if (!host.ensureSignedIn()) return Result.success()
                 val client = CableTvClient(host.transport)
                 val channels = client.channels()
-                if (channels.isEmpty()) {
-                    publisher.remove()
-                    return Result.success()
-                }
                 val now = client.clock.nowMs()
                 val ids = channels.map { it.id }
                 val window = 4 * 60 * 60 * 1000L
                 val guides =
-                    client.guide(ids, now - 60_000L, now + window)
-                        ?: client.schedule(ids, now - 60_000L, now + window).map { s ->
-                            com.github.damontecres.wholphin.tvmode.core
-                                .ChannelGuide(s.channelId, s.scheduleVersion, Guide.entries(s.slots))
-                        }
-                // "On now on <the service name set in the plugin>", the plugin's default being "Cable TV".
-                val service = runCatching { client.presentation().serviceName }.getOrNull()?.takeIf { it.isNotBlank() }
-                publisher.publish(
-                    HomeRow.onNow(channels, guides, now),
-                    service?.let { applicationContext.getString(R.string.cable_tv_on_now_service, it) }
-                        ?: applicationContext.getString(R.string.cable_tv_on_now),
-                )
+                    if (channels.isEmpty()) {
+                        emptyList()
+                    } else {
+                        client.guide(ids, now - 60_000L, now + window)
+                            ?: client.schedule(ids, now - 60_000L, now + window).map { s ->
+                                com.github.damontecres.wholphin.tvmode.core
+                                    .ChannelGuide(s.channelId, s.scheduleVersion, Guide.entries(s.slots))
+                            }
+                    }
+                val tiles = HomeRow.onNow(channels, guides, now)
+                Log.i(TAG, "Refreshed: ${channels.size} channels, ${tiles.size} on now")
+                when (HomeRowPolicy.afterRefresh(channels.size, tiles.size)) {
+                    RowAction.REMOVE -> {
+                        publisher.remove()
+                    }
+
+                    RowAction.KEEP -> {
+                        Unit
+                    }
+
+                    RowAction.PUBLISH -> {
+                        // "On now on <the service name set in the plugin>", the plugin's default being "Cable TV".
+                        val service = runCatching { client.presentation().serviceName }.getOrNull()?.takeIf { it.isNotBlank() }
+                        publisher.publish(
+                            tiles,
+                            service?.let { applicationContext.getString(R.string.cable_tv_on_now_service, it) }
+                                ?: applicationContext.getString(R.string.cable_tv_on_now),
+                        )
+                    }
+                }
                 Result.success()
             } catch (e: IOException) {
+                Log.w(TAG, "Refresh failed, will retry: ${e.message}")
                 Result.retry()
             } catch (e: Exception) {
+                // A periodic worker keeps running after a failure; the row stays as it was.
+                Log.w(TAG, "Refresh failed", e)
                 Result.failure()
             }
         }

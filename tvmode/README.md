@@ -26,7 +26,8 @@ The app touches very little so rebasing on upstream stays easy:
 | 0–9 | Tune by number (`1 0 _ _`; red when no channel has it) | |
 | OK | Open the guide | On the programme airing now: watch it. On a later one: say when it starts |
 | Left / Right / Info | Show the overlay | Move through programmes; the grid pages in half hours |
-| Back | Open the guide | Leave TV mode |
+| Back | Open the guide | Back to full screen (Settings → *Back closes TV mode* makes it leave instead) |
+| (guide button) ✕ CLOSE | | Leave TV mode, back to where you came from |
 | Long press Back, Last | Previous channel | |
 | Play/Pause | Pause (a "broadcast paused" screensaver); any key rejoins live | |
 | CC (Captions) | Subtitles on/off | |
@@ -98,6 +99,9 @@ to that channel (`wholphin://cabletv?channel=<id>`; `wholphin://cabletv` opens t
   same mechanism as the app's own "Recently added" row), so Android asks you once to let it show on the home screen.
   Home screens that don't support preview rows ignore it.
 - Turn it off in the TV mode settings (*Home screen row*), or hide it in the launcher's own settings.
+- The row is only taken off the home screen when the server has no Cable TV channels, the plugin is missing, or you
+  turn it off. A failed refresh (offline, signed out, server busy) or a moment with every channel off the air leaves
+  the last tiles in place. Refreshes are logged under the tag `CableTvHomeRow`.
 - Opening a tile from a cold start needs *Sign in automatically* turned on, the same as every other launch from the
   home screen.
 
