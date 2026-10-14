@@ -133,6 +133,8 @@ data class TvModeSettings(
     val subtitleLanguage: String = "",
     /** Channel up/down visit only the favourite channels (when there are any). */
     val favouritesOnly: Boolean = false,
+    /** Back in the guide leaves TV mode (otherwise it returns to full screen and the guide's CLOSE button leaves). */
+    val backExits: Boolean = false,
     /** Show an "On now" row on the Android TV home screen. */
     val homeRow: Boolean = true,
 )
@@ -255,6 +257,7 @@ class TvModeSettingsStore
                 .putBoolean("subtitles", next.subtitles)
                 .putString("subtitleLanguage", next.subtitleLanguage)
                 .putBoolean("favouritesOnly", next.favouritesOnly)
+                .putBoolean("backExits", next.backExits)
                 .putBoolean("homeRow", next.homeRow)
                 .apply()
         }
@@ -291,6 +294,7 @@ class TvModeSettingsStore
                 subtitles = prefs.getBoolean("subtitles", d.subtitles),
                 subtitleLanguage = prefs.getString("subtitleLanguage", d.subtitleLanguage) ?: d.subtitleLanguage,
                 favouritesOnly = prefs.getBoolean("favouritesOnly", d.favouritesOnly),
+                backExits = prefs.getBoolean("backExits", d.backExits),
                 homeRow = prefs.getBoolean("homeRow", d.homeRow),
             )
         }

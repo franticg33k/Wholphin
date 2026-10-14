@@ -111,6 +111,11 @@ fun SettingsDialog(
                     }
                 }
                 item {
+                    SettingRow("Back closes TV mode (otherwise use CLOSE)", onOff(settings.backExits)) {
+                        onChange { it.copy(backExits = !it.backExits) }
+                    }
+                }
+                item {
                     SettingRow(
                         "Player overlay",
                         settings.overlayStyle.label,

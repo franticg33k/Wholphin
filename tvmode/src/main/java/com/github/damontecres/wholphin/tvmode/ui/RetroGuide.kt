@@ -253,9 +253,10 @@ private fun TopBar(
         BarButton("SEARCH", model.onSearch)
         BarButton(model.sleepLabel, model.onSleep)
         BarButton("SETTINGS", model.onSettings)
-        BarButton("EXIT", model.onExit)
         Spacer(Modifier.weight(1f))
         TvText(model.serviceName.uppercase(), size = 14.sp, bold = true, color = theme.accent)
+        // Apart from the other buttons, at the end: Back no longer leaves TV mode, this does.
+        BarButton("\u2715 CLOSE", model.onExit)
     }
 }
 
