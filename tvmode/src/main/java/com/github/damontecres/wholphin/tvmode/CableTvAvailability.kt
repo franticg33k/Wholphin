@@ -1,5 +1,6 @@
 package com.github.damontecres.wholphin.tvmode
 
+import com.github.damontecres.wholphin.tvmode.core.CableTvChannelMap
 import com.github.damontecres.wholphin.tvmode.core.CableTvClient
 import com.github.damontecres.wholphin.tvmode.core.CableTvHttpException
 import com.github.damontecres.wholphin.tvmode.core.HomeRowPolicy
@@ -26,7 +27,9 @@ class CableTvAvailability
             var status: Int? = null
             var count: Int? = null
             try {
-                count = CableTvClient(host.transport).channels().size
+                val channels = CableTvClient(host.transport).channels()
+                CableTvChannelMap.update(channels)
+                count = channels.size
             } catch (e: CableTvHttpException) {
                 status = e.status
             } catch (e: Exception) {

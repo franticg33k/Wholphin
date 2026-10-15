@@ -16,6 +16,8 @@ data class ChannelDto(
     val poolSize: Int = 0,
     val category: String? = null,
     val kind: String? = null,
+    /** The channel's id in Jellyfin's own Live TV, which is what Live TV rows in the app point at. */
+    val liveTvId: String? = null,
 )
 
 @Serializable
@@ -183,6 +185,7 @@ data class TvChannel(
     val poolSize: Int,
     val category: String? = null,
     val kind: ChannelKind = ChannelKind.STANDARD,
+    val liveTvId: String? = null,
 )
 
 /**
@@ -242,6 +245,7 @@ internal fun ChannelDto.toChannel() =
             it.isNotBlank()
         },
         ChannelKind.parse(kind),
+        liveTvId?.takeIf { it.isNotBlank() },
     )
 
 internal fun SlotDto.toSlot() =

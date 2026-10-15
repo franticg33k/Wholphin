@@ -139,7 +139,7 @@ class NavDrawerViewModel
                 }
 
                 NavDrawerItem.CableTv -> {
-                    navigationManager.navigateTo(Destination.CableTv)
+                    navigationManager.navigateTo(Destination.CableTv())
                 }
 
                 is ServerNavDrawerItem -> {
@@ -173,7 +173,7 @@ class NavDrawerViewModel
                             is ServerNavDrawerItem -> it.destination
                             is NavDrawerItem.Favorites -> Destination.Favorites
                             is NavDrawerItem.Discover -> Destination.Discover
-                            is NavDrawerItem.CableTv -> Destination.CableTv
+                            is NavDrawerItem.CableTv -> Destination.CableTv()
                             else -> null
                         }
                     }

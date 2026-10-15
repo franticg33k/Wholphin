@@ -38,6 +38,8 @@ fun SettingsDialog(
     onDismiss: () -> Unit,
     customThemes: List<com.github.damontecres.wholphin.tvmode.CustomTheme> = emptyList(),
     onEditThemes: () -> Unit = {},
+    homeRowStatus: String = "",
+    onHomeRow: () -> Unit = {},
 ) {
     val theme = LocalTvTheme.current
     val first = remember { FocusRequester() }
@@ -95,6 +97,9 @@ fun SettingsDialog(
                         "Home screen row (what's on now)",
                         onOff(settings.homeRow),
                     ) { onChange { it.copy(homeRow = !it.homeRow) } }
+                }
+                if (settings.homeRow && homeRowStatus.isNotBlank()) {
+                    item { SettingRow("   Row status: $homeRowStatus", "Refresh / add") { onHomeRow() } }
                 }
                 item { SettingRow("Interface sounds", onOff(settings.uiSounds)) { onChange { it.copy(uiSounds = !it.uiSounds) } } }
                 item { SettingRow("Subtitles (CC key)", onOff(settings.subtitles)) { onChange { it.copy(subtitles = !it.subtitles) } } }

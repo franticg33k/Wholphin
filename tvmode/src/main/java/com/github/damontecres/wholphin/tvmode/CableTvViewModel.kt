@@ -130,9 +130,33 @@ class CableTvViewModel
         private val host: TvModeHost,
         private val settingsStore: TvModeSettingsStore,
         private val homeRow: HomeRowScheduler,
+        private val homeRowPublisher: HomeRowPublisher,
     ) : ViewModel() {
         val settings: StateFlow<TvModeSettings> = settingsStore.settings
         val customThemes: StateFlow<List<CustomTheme>> = settingsStore.customThemes
+
+        private val _homeRowStatus = MutableStateFlow(homeRowPublisher.status())
+
+        /** How the home screen row is doing ("12 tiles, 8:30 PM"), for the settings screen. */
+        val homeRowStatus: StateFlow<String> = _homeRowStatus.asStateFlow()
+
+        /**
+         * Settings → home screen row: asks Android to show the row when it hasn't been allowed to yet (that prompt needs
+         * an [activity]), otherwise refreshes it now.
+         */
+        fun homeRowAction(activity: android.app.Activity?) {
+            if (activity != null &&
+                homeRowPublisher.needsApproval()
+            ) {
+                homeRowPublisher.requestApproval(activity)
+            } else {
+                homeRow.ensureScheduled()
+            }
+            viewModelScope.launch {
+                delay(3_000)
+                _homeRowStatus.value = homeRowPublisher.status()
+            }
+        }
 
         /** Ids of the favourite channels. */
         val favourites: StateFlow<Set<String>> = settingsStore.favourites

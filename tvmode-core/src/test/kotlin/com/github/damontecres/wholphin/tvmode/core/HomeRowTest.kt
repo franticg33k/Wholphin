@@ -108,3 +108,28 @@ class HomeRowTest {
         assertNull(CableTvLaunch.take())
     }
 }
+
+class CableTvChannelMapTest {
+    @Test
+    fun findsACableTvChannelByItsLiveTvId_withOrWithoutDashes() {
+        CableTvChannelMap.update(
+            listOf(
+                channel("ch-a", "1").copy(liveTvId = "CF16100A9B42AF261A97BB23B9E87FA8"),
+                channel("ch-b", "2"),
+            ),
+        )
+
+        assertEquals("ch-a", CableTvChannelMap.channelFor("cf16100a-9b42-af26-1a97-bb23b9e87fa8"))
+        assertEquals("ch-a", CableTvChannelMap.channelFor("cf16100a9b42af261a97bb23b9e87fa8"))
+        assertNull(CableTvChannelMap.channelFor("00000000-0000-0000-0000-000000000000"))
+        assertNull(CableTvChannelMap.channelFor(null))
+    }
+
+    @Test
+    fun anUpdateReplacesTheOldMap() {
+        CableTvChannelMap.update(listOf(channel("ch-a", "1").copy(liveTvId = "aaaa")))
+        CableTvChannelMap.update(emptyList())
+
+        assertNull(CableTvChannelMap.channelFor("aaaa"))
+    }
+}

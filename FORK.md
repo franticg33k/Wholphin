@@ -30,20 +30,21 @@ Rules for any change in this fork:
 
 ### Upstream files this fork changes
 
-These are the only places a sync can conflict (about 52 lines in total):
+These are the only places a sync can conflict (about 64 lines in total):
 
 | File | Change |
 |---|---|
 | `settings.gradle.kts` | `include(":tvmode-core")`, `include(":tvmode")` |
 | `gradle/libs.versions.toml` | `kotlinx-coroutines-core` library entry |
 | `app/build.gradle.kts` | `implementation(project(":tvmode"))`; `git describe` ignores a missing tag (can be dropped once the fork has upstream's tags, which the sync workflow copies); `applicationId` is `com.github.damontecres.wholphin.cabletv`, so the fork installs next to upstream's app |
-| `ui/nav/Destination.kt` | `Destination.CableTv` |
-| `ui/nav/DestinationContent.kt` | branch rendering `CableTvScreen` |
+| `ui/nav/Destination.kt` | `Destination.CableTv(channelId)` |
+| `ui/nav/DestinationContent.kt` | branch rendering `CableTvScreen` (first telling it which channel to tune to) |
 | `ui/nav/NavDrawer.kt` | `NavDrawerItem.CableTv` and its cases in three `when` blocks |
 | `services/NavDrawerService.kt` | adds the item when `CableTvAvailability` says the plugin is there |
 | `res/values/strings.xml` | `cable_tv` string; `app_name` is "Wholphin Cable TV" |
 | `preferences/AppPreference.kt` | the default update URL is this fork's latest release, so in-app updates come from here |
 | `services/IntentService.kt` | a few lines that send a `wholphin://cabletv` link (the home screen row's tiles) to the TV mode |
+| `data/model/BaseItem.kt` | `destination()` sends a Cable TV channel (or a programme on one) to `Destination.CableTv` instead of Live TV playback |
 | `services/PlayerFactory.kt` | optional `loadControl` parameter on `createVideoPlayer` (TV mode starts playback after less buffering) |
 
 ### Fork-only resources

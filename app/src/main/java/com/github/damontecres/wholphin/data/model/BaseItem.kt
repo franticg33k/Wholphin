@@ -7,6 +7,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.buildAnnotatedString
 import com.github.damontecres.wholphin.R
 import com.github.damontecres.wholphin.WholphinApplication
+import com.github.damontecres.wholphin.tvmode.core.CableTvChannelMap
 import com.github.damontecres.wholphin.ui.abbreviateNumber
 import com.github.damontecres.wholphin.ui.detail.CardGridItem
 import com.github.damontecres.wholphin.ui.detail.music.artistsString
@@ -305,19 +306,22 @@ data class BaseItem(
                 }
 
                 BaseItemKind.TV_CHANNEL -> {
-                    Destination.Playback(
-                        itemId = id,
-                        positionMs = 0L,
-                    )
+                    // A Cable TV channel opens in the TV mode rather than Jellyfin's plain Live TV player.
+                    CableTvChannelMap.channelFor(id.toString())?.let { Destination.CableTv(it) }
+                        ?: Destination.Playback(
+                            itemId = id,
+                            positionMs = 0L,
+                        )
                 }
 
                 BaseItemKind.PROGRAM -> {
                     val channelId = data.channelId
                     if (channelId != null) {
-                        Destination.Playback(
-                            itemId = channelId,
-                            positionMs = 0L,
-                        )
+                        CableTvChannelMap.channelFor(channelId.toString())?.let { Destination.CableTv(it) }
+                            ?: Destination.Playback(
+                                itemId = channelId,
+                                positionMs = 0L,
+                            )
                     } else {
                         Destination.MediaItem(this)
                     }

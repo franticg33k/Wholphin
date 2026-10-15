@@ -99,6 +99,11 @@ to that channel (`wholphin://cabletv?channel=<id>`; `wholphin://cabletv` opens t
   same mechanism as the app's own "Recently added" row), so Android asks you once to let it show on the home screen.
   Home screens that don't support preview rows ignore it.
 - Turn it off in the TV mode settings (*Home screen row*), or hide it in the launcher's own settings.
+- **Row status:** Settings → *Home screen row* shows how the row is doing ("12 tiles, 8:30 PM", or why it couldn't be
+  filled). Selecting it refreshes the row, and if Android hasn't been allowed to show it yet, opens Android's prompt for
+  that (the prompt needs the app in front, so it can't appear from the background).
+- **In the app's own Live TV rows:** Cable TV channels (and programmes on them) listed in Wholphin's Live TV rows on the
+  home page open the TV mode, tuned to that channel, instead of Jellyfin's plain Live TV player.
 - The row is only taken off the home screen when the server has no Cable TV channels, the plugin is missing, or you
   turn it off. A failed refresh (offline, signed out, server busy) or a moment with every channel off the air leaves
   the last tiles in place. Refreshes are logged under the tag `CableTvHomeRow`.

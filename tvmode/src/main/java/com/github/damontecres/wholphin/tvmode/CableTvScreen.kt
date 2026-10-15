@@ -225,6 +225,8 @@ fun CableTvScreen(
         }
 
         if (showSettings) {
+            val homeRowStatus by viewModel.homeRowStatus.collectAsState()
+            val context = androidx.compose.ui.platform.LocalContext.current
             SettingsDialog(
                 settings,
                 viewModel::updateSettings,
@@ -234,6 +236,8 @@ fun CableTvScreen(
                     showSettings = false
                     showThemeEditor = true
                 },
+                homeRowStatus = homeRowStatus,
+                onHomeRow = { viewModel.homeRowAction(context.findActivity()) },
             )
         }
         if (showThemeEditor) {
@@ -496,4 +500,14 @@ private fun NoticeChip(
     ) {
         Text(text, color = Color.White, fontSize = 18.sp)
     }
+}
+
+/** The Activity behind a Compose context, for system prompts that need one. */
+private fun android.content.Context.findActivity(): android.app.Activity? {
+    var context = this
+    while (context is android.content.ContextWrapper) {
+        if (context is android.app.Activity) return context
+        context = context.baseContext
+    }
+    return null
 }

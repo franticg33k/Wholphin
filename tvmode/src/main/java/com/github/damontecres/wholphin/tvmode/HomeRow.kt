@@ -70,13 +70,90 @@ class HomeRowPublisher
                 remove()
                 return
             }
-            val channelId = ensureChannel(title) ?: return
+            val channelId = ensureChannel(title)
+            if (channelId == null) {
+                setStatus("Couldn't create the row on the home screen")
+                return
+            }
             val existing = programIds(channelId)
-            val programs = entries.mapIndexed { index, entry -> program(channelId, entry, entries.size - index).toContentValues() }
-            context.contentResolver.bulkInsert(TvContractCompat.PreviewPrograms.CONTENT_URI, programs.toTypedArray())
-            // Remove the old tiles after the new ones are in, so the row never flashes empty.
+            // One insert per tile, so a tile Android rejects is named in the log rather than silently dropped.
+            var inserted = 0
+            var failure: String? = null
+            entries.forEachIndexed { index, entry ->
+                try {
+                    val uri =
+                        context.contentResolver.insert(
+                            TvContractCompat.PreviewPrograms.CONTENT_URI,
+                            program(channelId, entry, entries.size - index).toContentValues(),
+                        )
+                    if (uri != null) inserted++ else failure = failure ?: "Android refused a tile"
+                } catch (e: Exception) {
+                    Log.w(TAG, "Couldn't add the tile for channel ${entry.number}", e)
+                    failure = failure ?: "${e.javaClass.simpleName}: ${e.message}"
+                }
+            }
+            if (inserted == 0) {
+                // Keep the old tiles: removing them now would leave an empty row.
+                setStatus("Couldn't add tiles (${failure ?: "unknown"})")
+                return
+            }
+            // Remove the old tiles only once the new ones are in, so the row never flashes or goes empty.
             existing.forEach { context.contentResolver.delete(TvContractCompat.buildPreviewProgramUri(it), null, null) }
+            val shown = isBrowsable(channelId)
+            Log.i(TAG, "Published $inserted of ${entries.size} tiles, removed ${existing.size}, browsable=$shown")
+            setStatus(
+                when {
+                    !shown -> "$inserted tiles ready, but the row isn't on your home screen yet: select this to add it"
+                    failure != null -> "$inserted of ${entries.size} tiles ($failure)"
+                    else -> "$inserted tiles"
+                },
+                tiles = inserted,
+            )
         }
+
+        /** The row's tiles and when they were last refreshed, for the settings screen. */
+        fun status(): String {
+            val text = prefs.getString(KEY_STATUS, null) ?: return "Not set up yet"
+            val at = prefs.getLong(KEY_STATUS_AT, 0L)
+            return if (at > 0) "$text, ${DateFormat.getTimeFormat(context).format(Date(at))}" else text
+        }
+
+        /** True when the row exists but Android hasn't been allowed to show it on the home screen. */
+        fun needsApproval(): Boolean {
+            val id = prefs.getLong(KEY_CHANNEL, -1L)
+            return supported && id >= 0 && channelExists(id) && !isBrowsable(id)
+        }
+
+        /** Asks Android to show the row on the home screen. Needs an Activity: it opens the system's approval prompt. */
+        fun requestApproval(activity: android.app.Activity) {
+            val id = prefs.getLong(KEY_CHANNEL, -1L)
+            if (id >= 0) runCatching { TvContractCompat.requestChannelBrowsable(activity, id) }
+        }
+
+        private fun setStatus(
+            text: String,
+            tiles: Int = 0,
+        ) {
+            Log.i(TAG, "Row status: $text")
+            prefs
+                .edit()
+                .putString(KEY_STATUS, text)
+                .putLong(KEY_STATUS_AT, System.currentTimeMillis())
+                .putInt(KEY_TILES, tiles)
+                .apply()
+        }
+
+        private fun isBrowsable(channelId: Long): Boolean =
+            runCatching {
+                context.contentResolver
+                    .query(
+                        TvContractCompat.buildChannelUri(channelId),
+                        arrayOf(TvContractCompat.Channels.COLUMN_BROWSABLE),
+                        null,
+                        null,
+                        null,
+                    )?.use { it.moveToFirst() && it.getInt(0) == 1 }
+            }.getOrNull() ?: true
 
         /** Takes the row off the home screen. */
         fun remove() {
@@ -85,6 +162,7 @@ class HomeRowPublisher
             if (id >= 0) {
                 runCatching { context.contentResolver.delete(TvContractCompat.buildChannelUri(id), null, null) }
                 prefs.edit().remove(KEY_CHANNEL).apply()
+                setStatus("Off the home screen")
             }
         }
 
@@ -113,7 +191,8 @@ class HomeRowPublisher
                 .putLong(KEY_CHANNEL, id)
                 .putString(KEY_TITLE, title)
                 .apply()
-            // Asks the user to let the row show on the home screen (Android asks once).
+            // Android only shows the row once the user approves it; that prompt needs an Activity (see requestApproval),
+            // so this may do nothing from the background.
             runCatching { TvContractCompat.requestChannelBrowsable(context, id) }
             return id
         }
@@ -184,6 +263,9 @@ class HomeRowPublisher
         private companion object {
             const val KEY_CHANNEL = "channel"
             const val KEY_TITLE = "title"
+            const val KEY_STATUS = "status"
+            const val KEY_STATUS_AT = "statusAt"
+            const val KEY_TILES = "tiles"
             const val PICTURE_HEIGHT = 360
         }
     }

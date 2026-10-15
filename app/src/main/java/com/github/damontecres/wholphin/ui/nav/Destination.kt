@@ -145,9 +145,11 @@ sealed class Destination(
     @Serializable
     data object Favorites : Destination(false)
 
-    /** Cable TV mode, for servers running the Cable TV plugin. */
+    /** Cable TV mode, for servers running the Cable TV plugin; [channelId] tunes to a channel on opening. */
     @Serializable
-    data object CableTv : Destination(true)
+    data class CableTv(
+        val channelId: String? = null,
+    ) : Destination(true)
 
     @Serializable
     data object Discover : Destination(false)
