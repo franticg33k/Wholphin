@@ -55,7 +55,7 @@ classic cable-guide apps in behaviour and layout only; every asset is original o
   the next programmes and a clock.
 - **Tuning screens:** static, colour bars or a "please stand by" card, optionally with the channel logo. A gap in
   the schedule shows a break screen with an "UP NEXT IN m:ss" countdown instead.
-- **On the picture:** the channel logo in a corner (always or every five minutes, with position and opacity), a rating
+- **On the picture:** the channel logo in a corner (always or every five minutes, with position, size and opacity), a rating
   badge when a programme starts, "Our feature presentation" before movies, and an up-next card in a programme's last
   minute.
 - **CRT:** scanlines, corner shading, and 4:3 picture modes: cropped, letterboxed, or inside a drawn CRT set.
