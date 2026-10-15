@@ -41,7 +41,7 @@ The app touches very little so rebasing on upstream stays easy:
 Inspired by NostalgiaTV, but written from scratch: none of its code or assets are used. The layout follows
 classic cable-guide apps in behaviour and layout only; every asset is original or openly licensed.
 
-- **Guide:** a top bar (Watch, Settings, Exit); an info panel with the focused programme's clear logo or title, the
+- **Guide:** a top bar (Search, Audio & subs, Sleep, Settings, ✕ Close; **Back** or **Menu** jumps up to it from anywhere in the grid, and Back again returns to full screen); an info panel with the focused programme's clear logo or title, the
   `S1E10 - Episode` line in the accent colour, times, channel, chips (air date, rating, quality, audio, runtime, NEW,
   community rating) and overview, over a faint backdrop; the live channel in a preview window; category tabs; a time
   row with a clock, half-hour columns and a "now" marker and line; and the grid, whose cells are as wide as the

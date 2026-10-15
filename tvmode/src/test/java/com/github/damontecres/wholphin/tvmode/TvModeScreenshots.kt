@@ -226,7 +226,6 @@ class TvModeScreenshots {
             onTune = {},
             onShift = { false },
             onFocusItem = {},
-            onFullscreen = {},
             onSettings = {},
             onExit = {},
         )
