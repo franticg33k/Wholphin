@@ -88,7 +88,6 @@ class GuideModel(
     val onTune: (String) -> Unit,
     val onShift: (Int) -> Boolean,
     val onFocusItem: (String?) -> Unit,
-    val onFullscreen: () -> Unit,
     val onSettings: () -> Unit,
     val onExit: () -> Unit,
     val onSearch: () -> Unit = {},
@@ -121,13 +120,24 @@ fun RetroGuide(
     }
     var notice by remember { mutableStateOf<String?>(null) }
     val initialCell = remember { FocusRequester() }
-    val watchButton = remember { FocusRequester() }
+    // The first button of the top menu: where Back and Menu send focus from the grid.
+    val menuFocus = remember { FocusRequester() }
+    var menuHasFocus by remember { mutableStateOf(false) }
 
     Column(
         modifier
             .fillMaxSize()
             .background(theme.background)
-            .onKeyEvent { event ->
+            .onPreviewKeyEvent { event ->
+                // Back or Menu in the grid goes up to the top menu in one press (rather than up through every channel);
+                // from the menu they carry on as usual (Back returns to full screen).
+                if ((event.key == Key.Back || event.key == Key.Menu) && !menuHasFocus) {
+                    if (event.type == KeyEventType.KeyUp) runCatching { menuFocus.requestFocus() }
+                    true
+                } else {
+                    false
+                }
+            }.onKeyEvent { event ->
                 // * (or yellow) marks the focused channel as a favourite; holding OK on a programme does too.
                 val favouriteKey = event.key == Key.NumPadMultiply || event.key == StarKey || event.key == Key.ProgramYellow
                 if (event.type == KeyEventType.KeyDown && favouriteKey) {
@@ -149,7 +159,7 @@ fun RetroGuide(
                     .fillMaxHeight()
                     .background(theme.panel),
             ) {
-                TopBar(model, watchButton)
+                TopBar(model, menuFocus) { menuHasFocus = it }
                 InfoPanel(focused, notice, model, Modifier.weight(1f))
             }
             Box(
@@ -232,33 +242,35 @@ fun RetroGuide(
     LaunchedEffect(Unit) {
         model.onFocusItem(focused?.second?.itemId)
         val shown = model.rows.any { it.channel.id == model.current?.id }
-        if (!shown || runCatching { initialCell.requestFocus() }.isFailure) runCatching { watchButton.requestFocus() }
+        if (!shown || runCatching { initialCell.requestFocus() }.isFailure) runCatching { menuFocus.requestFocus() }
     }
 }
 
 @Composable
 private fun TopBar(
     model: GuideModel,
-    watchButton: FocusRequester,
+    menuFocus: FocusRequester,
+    onFocusChange: (Boolean) -> Unit,
 ) {
     val theme = LocalTvTheme.current
     Row(
         Modifier
             .fillMaxWidth()
             .background(theme.topBar)
+            .onFocusChanged { onFocusChange(it.hasFocus) }
             .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        BarButton("WATCH", model.onFullscreen, Modifier.focusRequester(watchButton))
-        BarButton("SEARCH", model.onSearch)
+        BarButton("SEARCH", model.onSearch, Modifier.focusRequester(menuFocus))
         BarButton("AUDIO & SUBS", model.onTracks)
         BarButton(model.sleepLabel, model.onSleep)
         BarButton("SETTINGS", model.onSettings)
-        Spacer(Modifier.weight(1f))
-        TvText(model.serviceName.uppercase(), size = 14.sp, bold = true, color = theme.accent)
-        // Apart from the other buttons, at the end: Back no longer leaves TV mode, this does.
+        // Back no longer leaves TV mode: this does. It sits with the buttons, before the (shrinkable) service name, so
+        // it is always on screen.
         BarButton("\u2715 CLOSE", model.onExit)
+        Spacer(Modifier.weight(1f))
+        TvText(model.serviceName.uppercase(), size = 14.sp, bold = true, color = theme.accent, maxLines = 1)
     }
 }
 

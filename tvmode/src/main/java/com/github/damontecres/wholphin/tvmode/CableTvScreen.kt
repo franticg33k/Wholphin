@@ -192,7 +192,6 @@ fun CableTvScreen(
                             onTune = viewModel::tuneTo,
                             onShift = viewModel::shiftGuide,
                             onFocusItem = viewModel::requestDetails,
-                            onFullscreen = viewModel::closeGuide,
                             onSettings = { showSettings = true },
                             onExit = viewModel::exit,
                             onSearch = { showSearch = true },
