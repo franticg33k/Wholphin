@@ -57,3 +57,21 @@ object CableTvLaunch {
     /** Takes the requested channel, if any; it is returned once. */
     fun take(): String? = pending.getAndSet(null)
 }
+
+/**
+ * Which Jellyfin Live TV channel items are Cable TV channels, so the app's own Live TV rows (which list them) can open the
+ * TV mode instead of Jellyfin's plain Live TV player. Filled whenever the app asks the plugin for its channels.
+ */
+object CableTvChannelMap {
+    @Volatile
+    private var byLiveTvId: Map<String, String> = emptyMap()
+
+    fun update(channels: List<TvChannel>) {
+        byLiveTvId = channels.mapNotNull { c -> c.liveTvId?.let { normalize(it) to c.id } }.toMap()
+    }
+
+    /** The Cable TV channel id for a Jellyfin Live TV channel item id (with or without dashes), or null. */
+    fun channelFor(liveTvItemId: String?): String? = liveTvItemId?.let { byLiveTvId[normalize(it)] }
+
+    private fun normalize(id: String) = id.replace("-", "").lowercase()
+}

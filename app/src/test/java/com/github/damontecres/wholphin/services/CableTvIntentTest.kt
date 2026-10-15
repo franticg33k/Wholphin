@@ -9,7 +9,6 @@ import com.github.damontecres.wholphin.preferences.AppPreferences
 import com.github.damontecres.wholphin.preferences.UserPreferences
 import com.github.damontecres.wholphin.preferences.update
 import com.github.damontecres.wholphin.test.currentUser
-import com.github.damontecres.wholphin.tvmode.core.CableTvLaunch
 import com.github.damontecres.wholphin.ui.nav.Destination
 import io.mockk.coEvery
 import io.mockk.every
@@ -20,7 +19,6 @@ import kotlinx.coroutines.test.runTest
 import org.jellyfin.sdk.api.client.ApiClient
 import org.jellyfin.sdk.model.UUID
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -41,7 +39,6 @@ class CableTvIntentTest {
 
     @Before
     fun setup() {
-        CableTvLaunch.take()
         intentService = IntentService(api, serverRepository, userPreferencesService)
         every { userPreferencesService.flow } returns
             flow {
@@ -52,15 +49,14 @@ class CableTvIntentTest {
     }
 
     @Test
-    fun `a Cable TV link opens the TV mode and asks for its channel`() =
+    fun `a Cable TV link opens the TV mode on the channel it names`() =
         runTest {
             val result = intentService.parseIntent(Intent(Intent.ACTION_VIEW, Uri.parse("wholphin://cabletv?channel=ch-sitcoms")))
 
             assertTrue(result is IntentResult.Target)
             result as IntentResult.Target
-            assertEquals(listOf<Destination>(Destination.CableTv), result.destinations)
+            assertEquals(listOf<Destination>(Destination.CableTv("ch-sitcoms")), result.destinations)
             assertTrue(result.addHomeToBackStack)
-            assertEquals("ch-sitcoms", CableTvLaunch.take())
         }
 
     @Test
@@ -69,7 +65,6 @@ class CableTvIntentTest {
             val result = intentService.parseIntent(Intent(Intent.ACTION_VIEW, Uri.parse("wholphin://cabletv")))
 
             assertTrue(result is IntentResult.Target)
-            assertEquals(listOf<Destination>(Destination.CableTv), (result as IntentResult.Target).destinations)
-            assertNull(CableTvLaunch.take())
+            assertEquals(listOf<Destination>(Destination.CableTv()), (result as IntentResult.Target).destinations)
         }
 }
