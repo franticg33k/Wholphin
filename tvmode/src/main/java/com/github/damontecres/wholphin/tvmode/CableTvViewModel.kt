@@ -22,6 +22,8 @@ import com.github.damontecres.wholphin.tvmode.core.PlayItem
 import com.github.damontecres.wholphin.tvmode.core.ScheduleCache
 import com.github.damontecres.wholphin.tvmode.core.SlotKind
 import com.github.damontecres.wholphin.tvmode.core.SubtitleLanguages
+import com.github.damontecres.wholphin.tvmode.core.SubtitleMode
+import com.github.damontecres.wholphin.tvmode.core.TrackChoice
 import com.github.damontecres.wholphin.tvmode.core.TuneInPlanner
 import com.github.damontecres.wholphin.tvmode.core.TunePlan
 import com.github.damontecres.wholphin.tvmode.core.TvChannel
@@ -104,6 +106,21 @@ data class CableTvUiState(
     /** A short message on screen, such as "Subtitles on". */
     val notice: String? = null,
 )
+
+/** One choice in the audio and subtitle menu. */
+data class TrackOption(
+    val id: String,
+    val label: String,
+    val selected: Boolean,
+)
+
+/** The tracks of what is playing: audio, and subtitles with "Off" first. */
+data class TrackMenu(
+    val audio: List<TrackOption>,
+    val subtitles: List<TrackOption>,
+)
+
+const val TRACK_OFF = "off"
 
 /** Where a trailer's movie or series airs next. */
 data class TrailerTarget(
@@ -212,6 +229,7 @@ class CableTvViewModel
                     reason: Int,
                 ) {
                     val slot = mediaItem?.slot() ?: return
+                    manualTracks = false
                     setPlaying(slot)
                     showNowAndNext(slot)
                     extendQueue(slot)
@@ -250,7 +268,7 @@ class CableTvViewModel
             viewModelScope.launch { tick() }
             viewModelScope.launch {
                 settings
-                    .map { it.subtitles to it.subtitleLanguage }
+                    .map { Triple(it.subtitleMode, it.subtitleLanguage, it.audioLanguage) }
                     .distinctUntilChanged()
                     .drop(1)
                     .collect { subtitlesChanged() }
@@ -496,7 +514,7 @@ class CableTvViewModel
                     }
                     when (val plan = TuneInPlanner.plan(cache.slotsFrom(channel.id, client.clock.nowMs()), client.clock.nowMs())) {
                         is TunePlan.Play -> {
-                            if (settings.value.subtitles) prefetchSubtitles(plan.items.take(2))
+                            prefetchSubtitles(plan.items.take(2))
                             queued = plan.items
                             player.setMediaItems(plan.items.map(::toMediaItem), 0, plan.startPositionMs)
                             player.prepare()
@@ -625,7 +643,7 @@ class CableTvViewModel
             if (more.isNotEmpty()) {
                 queued = queued.dropWhile { it.slot.endMs <= playing.startMs } + more
                 player.addMediaItems(more.map(::toMediaItem))
-                if (settings.value.subtitles) viewModelScope.launch { attachSubtitles(more) }
+                viewModelScope.launch { attachSubtitles(more) }
             }
         }
 
@@ -652,11 +670,102 @@ class CableTvViewModel
 
         private var noticeJob: Job? = null
 
-        /** Turns subtitles on or off (the CC key). */
+        /** Set when the viewer picks a track in the menu; the saved settings then stop deciding until the next programme. */
+        private var manualTracks = false
+
+        // ---- track menu (audio and subtitles) ----
+
+        private val _trackMenu = MutableStateFlow<TrackMenu?>(null)
+
+        /** The audio and subtitle tracks of what is playing, while the menu is open. */
+        val trackMenu: StateFlow<TrackMenu?> = _trackMenu.asStateFlow()
+
+        /** Opens the audio and subtitle menu (the A key, or the guide's button). */
+        fun openTrackMenu() {
+            val player = _player.value ?: return
+            val menu = buildTrackMenu(player.currentTracks)
+            if (menu.audio.isEmpty() && menu.subtitles.size <= 1) {
+                showNotice("No other audio or subtitle tracks")
+                return
+            }
+            _state.update { it.copy(showGuide = false) }
+            _trackMenu.value = menu
+        }
+
+        fun closeTrackMenu() {
+            _trackMenu.value = null
+        }
+
+        /** Plays the audio track [id] (from [trackMenu]). */
+        fun chooseAudio(id: String) {
+            val player = _player.value ?: return
+            val group = player.currentTracks.groups.getOrNull(id.removePrefix("a:").toIntOrNull() ?: return) ?: return
+            manualTracks = true
+            player.trackSelectionParameters =
+                player.trackSelectionParameters
+                    .buildUpon()
+                    .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, 0))
+                    .build()
+            _trackMenu.update { menu -> menu?.copy(audio = menu.audio.map { it.copy(selected = it.id == id) }) }
+        }
+
+        /** Shows subtitle track [id] (from [trackMenu]), or none for "off". */
+        fun chooseSubtitle(id: String) {
+            val player = _player.value ?: return
+            manualTracks = true
+            val builder = player.trackSelectionParameters.buildUpon().clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            if (id == TRACK_OFF) {
+                builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+            } else {
+                val group = player.currentTracks.groups.getOrNull(id.removePrefix("t:").toIntOrNull() ?: return) ?: return
+                builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, 0))
+            }
+            player.trackSelectionParameters = builder.build()
+            _trackMenu.update { menu -> menu?.copy(subtitles = menu.subtitles.map { it.copy(selected = it.id == id) }) }
+        }
+
+        private fun buildTrackMenu(tracks: Tracks): TrackMenu {
+            val audio = mutableListOf<TrackOption>()
+            val text = mutableListOf<TrackOption>()
+            tracks.groups.forEachIndexed { index, group ->
+                if (!group.isSupported || group.length == 0) return@forEachIndexed
+                val format = group.mediaTrackGroup.getFormat(0)
+                val default = (format.selectionFlags and C.SELECTION_FLAG_DEFAULT) != 0
+                when (group.type) {
+                    C.TRACK_TYPE_AUDIO -> {
+                        audio +=
+                            TrackOption(
+                                "a:$index",
+                                TrackChoice.audioLabel(format.language, format.label, format.channelCount, format.sampleMimeType, default),
+                                group.isSelected,
+                            )
+                    }
+
+                    C.TRACK_TYPE_TEXT -> {
+                        text +=
+                            TrackOption(
+                                "t:$index",
+                                TrackChoice.subtitleLabel(
+                                    format.language,
+                                    format.label,
+                                    forced = (format.selectionFlags and C.SELECTION_FLAG_FORCED) != 0,
+                                    external = format.id?.startsWith("e:") == true || group.mediaTrackGroup.id.contains(":e:"),
+                                    isDefault = default,
+                                ),
+                                group.isSelected,
+                            )
+                    }
+                }
+            }
+            val subtitlesOff = text.none { it.selected }
+            return TrackMenu(audio, listOf(TrackOption(TRACK_OFF, "Off", subtitlesOff)) + text)
+        }
+
+        /** The CC key: Off, On, then Auto. */
         fun toggleSubtitles() {
-            val on = !settings.value.subtitles
-            updateSettings { it.copy(subtitles = on) }
-            showNotice(if (on) "Subtitles on" else "Subtitles off")
+            val mode = settings.value.subtitleMode.next()
+            updateSettings { it.copy(subtitleMode = mode) }
+            showNotice("Subtitles: ${mode.label}")
         }
 
         /** Shows a short message in the corner. */
@@ -707,11 +816,35 @@ class CableTvViewModel
                     .language
             }
 
+        /** The language to prefer for audio: null follows the file's own default track. */
+        private fun audioPreference(): String? =
+            when (val pref = settings.value.audioLanguage) {
+                "" -> {
+                    null
+                }
+
+                "device" -> {
+                    runCatching {
+                        java.util.Locale
+                            .getDefault()
+                            .isO3Language
+                    }.getOrNull()
+                }
+
+                else -> {
+                    pref
+                }
+            }
+
         private fun applySubtitleSettings(player: Player) {
-            val on = settings.value.subtitles
+            // On: preferred language, now. Auto decides once the audio track is known (see pickSubtitleTrack).
+            val on = settings.value.subtitleMode == SubtitleMode.ON
+            manualTracks = false
             player.trackSelectionParameters =
                 player.trackSelectionParameters
                     .buildUpon()
+                    .setPreferredAudioLanguage(audioPreference())
+                    .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
                     .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !on)
                     .clearOverridesOfType(C.TRACK_TYPE_TEXT)
                     .setPreferredTextLanguage(if (on) subtitleLanguage() else null)
@@ -722,7 +855,8 @@ class CableTvViewModel
         private suspend fun subtitlesChanged() {
             val player = _player.value ?: return
             applySubtitleSettings(player)
-            if (!settings.value.subtitles) return
+            pickSubtitleTrack(player.currentTracks)
+            if (settings.value.subtitleMode == SubtitleMode.OFF) return
             // Switched on mid-programme: a programme with an external subtitle file needs it loaded, so tune again.
             val slot = _state.value.playing ?: return
             slot.itemId?.let { loadDetails(it) }
@@ -735,12 +869,40 @@ class CableTvViewModel
         }
 
         /**
-         * With subtitles on but nothing selected (no track in the preferred language, none flagged default), shows the
-         * first full track rather than nothing.
+         * Decides whether subtitles show: always when On, never when Off, and with Auto when the audio that is playing
+         * isn't in the viewer's language. With them wanted but nothing selected (no track in the preferred language,
+         * none flagged default), shows the first full track rather than nothing. A choice made in the track menu
+         * stands for the rest of the programme.
          */
         private fun pickSubtitleTrack(tracks: Tracks) {
             val player = _player.value ?: return
-            if (!settings.value.subtitles) return
+            if (manualTracks) return
+            val want =
+                when (settings.value.subtitleMode) {
+                    SubtitleMode.OFF -> {
+                        false
+                    }
+
+                    SubtitleMode.ON -> {
+                        true
+                    }
+
+                    SubtitleMode.AUTO -> {
+                        val audio = tracks.groups.firstOrNull { it.type == C.TRACK_TYPE_AUDIO && it.isSelected }
+                        TrackChoice.autoSubtitles(audio?.mediaTrackGroup?.getFormat(0)?.language, subtitleLanguage())
+                    }
+                }
+            val parameters = player.trackSelectionParameters
+            if (parameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT) == want) {
+                player.trackSelectionParameters =
+                    parameters
+                        .buildUpon()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !want)
+                        .setPreferredTextLanguage(if (want) subtitleLanguage() else null)
+                        .setSelectUndeterminedTextLanguage(want)
+                        .build()
+            }
+            if (!want) return
             val text = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT && it.isSupported }
             if (text.isEmpty() || text.any { it.isSelected }) return
             val full = text.filter { (it.mediaTrackGroup.getFormat(0).selectionFlags and C.SELECTION_FLAG_FORCED) == 0 }
@@ -756,7 +918,7 @@ class CableTvViewModel
         }
 
         private fun externalSubtitles(slot: TvSlot): List<MediaItem.SubtitleConfiguration> {
-            if (!settings.value.subtitles || slot.audio) return emptyList()
+            if (slot.audio) return emptyList()
             val itemId = slot.itemId ?: return emptyList()
             val tracks = _details.value[itemId]?.subtitles ?: return emptyList()
             return tracks.filter { it.external && it.loadable }.map { track ->

@@ -92,6 +92,7 @@ class GuideModel(
     val onSettings: () -> Unit,
     val onExit: () -> Unit,
     val onSearch: () -> Unit = {},
+    val onTracks: () -> Unit = {},
     val serviceName: String = "Cable TV",
     val favourites: Set<String> = emptySet(),
     val onToggleFavourite: (String) -> Unit = {},
@@ -251,6 +252,7 @@ private fun TopBar(
     ) {
         BarButton("WATCH", model.onFullscreen, Modifier.focusRequester(watchButton))
         BarButton("SEARCH", model.onSearch)
+        BarButton("AUDIO & SUBS", model.onTracks)
         BarButton(model.sleepLabel, model.onSleep)
         BarButton("SETTINGS", model.onSettings)
         Spacer(Modifier.weight(1f))

@@ -67,6 +67,7 @@ import com.github.damontecres.wholphin.tvmode.ui.StarKey
 import com.github.damontecres.wholphin.tvmode.ui.StillWatchingPrompt
 import com.github.damontecres.wholphin.tvmode.ui.ThemeEditorDialog
 import com.github.damontecres.wholphin.tvmode.ui.ThemeRoles
+import com.github.damontecres.wholphin.tvmode.ui.TrackMenuDialog
 import com.github.damontecres.wholphin.tvmode.ui.TrailerPanel
 import com.github.damontecres.wholphin.tvmode.ui.TuningSplash
 import com.github.damontecres.wholphin.tvmode.ui.TvText
@@ -195,6 +196,7 @@ fun CableTvScreen(
                             onSettings = { showSettings = true },
                             onExit = viewModel::exit,
                             onSearch = { showSearch = true },
+                            onTracks = viewModel::openTrackMenu,
                             serviceName = state.serviceName,
                             sleepLabel = sleepLabel(state.sleepAtMs, state.nowMs),
                             onSleep = viewModel::cycleSleep,
@@ -222,6 +224,16 @@ fun CableTvScreen(
             state.error?.let {
                 TvText(it, color = Color.White, maxLines = 4, modifier = Modifier.align(Alignment.Center).padding(32.dp))
             }
+        }
+
+        val trackMenu by viewModel.trackMenu.collectAsState()
+        trackMenu?.let {
+            TrackMenuDialog(
+                menu = it,
+                onAudio = viewModel::chooseAudio,
+                onSubtitle = viewModel::chooseSubtitle,
+                onDismiss = viewModel::closeTrackMenu,
+            )
         }
 
         if (showSettings) {
@@ -447,6 +459,12 @@ private fun handleKey(
 
         Key.Captions, Key.C -> {
             viewModel.toggleSubtitles()
+            true
+        }
+
+        // The audio-track key, or A: pick the audio and subtitle tracks.
+        Key.MediaAudioTrack, Key.A -> {
+            viewModel.openTrackMenu()
             true
         }
 
