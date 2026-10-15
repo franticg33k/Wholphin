@@ -978,6 +978,30 @@ class CableTvViewModel
             viewModelScope.launch {
                 now?.itemId?.let { loadDetails(it) }
                 next?.itemId?.let { loadDetails(it) }
+                ensureExternalSubtitles(slot)
+            }
+        }
+
+        /** The programme whose subtitle files were loaded late by tuning in again, so it happens once. */
+        private var subtitlesReloadedFor: String? = null
+
+        /**
+         * A programme starts playing before its details arrive when the server is slow, and then has no subtitle files
+         * loaded next to it (the cause of subtitles that work on some tune-ins and not others). Tune in again once the
+         * details are there; the schedule puts playback back at the same point.
+         */
+        private fun ensureExternalSubtitles(slot: TvSlot) {
+            if (slot.audio || subtitlesReloadedFor == slot.id || _state.value.playing?.id != slot.id) return
+            val loaded =
+                _player.value
+                    ?.currentMediaItem
+                    ?.takeIf { it.mediaId == slot.id }
+                    ?.localConfiguration
+                    ?.subtitleConfigurations
+                    .orEmpty()
+            if (loaded.isEmpty() && externalSubtitles(slot).isNotEmpty()) {
+                subtitlesReloadedFor = slot.id
+                retune()
             }
         }
 

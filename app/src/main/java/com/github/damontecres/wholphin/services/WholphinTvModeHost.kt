@@ -4,7 +4,9 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.DefaultLoadControl
 import com.github.damontecres.wholphin.data.RestoredSession
 import com.github.damontecres.wholphin.data.ServerRepository
+import com.github.damontecres.wholphin.preferences.AssPlaybackMode
 import com.github.damontecres.wholphin.preferences.PlayerBackend
+import com.github.damontecres.wholphin.preferences.updatePlaybackOverrides
 import com.github.damontecres.wholphin.services.hilt.AuthOkHttpClient
 import com.github.damontecres.wholphin.tvmode.TvModeHost
 import com.github.damontecres.wholphin.tvmode.core.CableTvHttpException
@@ -112,7 +114,13 @@ class WholphinTvModeHost
         override suspend fun createPlayer(): Player {
             // TV mode clips items to their scheduled in/out points, which ExoPlayer supports; use it whatever the
             // default backend is.
-            val prefs = userPreferencesService.getCurrent().appPreferences
+            // libass draws ASS/SSA subtitles on an overlay that only the regular player attaches; here they would be
+            // silently invisible (anime and foreign films), so have ExoPlayer turn them into ordinary captions.
+            val prefs =
+                userPreferencesService
+                    .getCurrent()
+                    .appPreferences
+                    .updatePlaybackOverrides { assPlaybackMode = AssPlaybackMode.ASS_EXO_PLAYER }
             // Start after one second of buffer rather than ExoPlayer's 2.5 s: every tune-in is a seek into a file.
             val loadControl =
                 DefaultLoadControl

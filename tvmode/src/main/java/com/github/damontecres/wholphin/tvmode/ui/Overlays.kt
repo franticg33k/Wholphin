@@ -137,7 +137,8 @@ private fun NowNextBlock(
             )
         }
         episodeLine(entry)?.takeIf { !entry.movie }?.let { TvText(it, size = 16.sp, color = Color.White, style = shadowed()) }
-        TvText(formatTime(entry.startMs, data.clock24h), size = 14.sp, color = theme.textSecondary)
+        // The timeline below already shows these two times at its ends.
+        if (data.now == null) TvText(formatTime(entry.startMs, data.clock24h), size = 14.sp, color = theme.textSecondary)
     }
 }
 
