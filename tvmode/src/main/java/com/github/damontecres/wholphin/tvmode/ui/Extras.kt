@@ -76,11 +76,16 @@ fun Watermark(
     corner: Corner,
     opacity: Int,
     clock: State<Long>,
+    sizePercent: Int = 100,
 ) {
     if (mode == WatermarkMode.OFF || channel?.logoUrl == null) return
     if (mode == WatermarkMode.PERIODIC && clock.value % WATERMARK_PERIOD_MS >= WATERMARK_SHOWN_MS) return
     Box(Modifier.fillMaxSize().padding(horizontal = 40.dp, vertical = 28.dp)) {
-        ChannelLogo(channel, Modifier.align(corner.alignment()).size(width = 110.dp, height = 52.dp), alpha = opacity / 100f)
+        ChannelLogo(
+            channel,
+            Modifier.align(corner.alignment()).size(width = 110.dp * (sizePercent / 100f), height = 52.dp * (sizePercent / 100f)),
+            alpha = opacity / 100f,
+        )
     }
 }
 

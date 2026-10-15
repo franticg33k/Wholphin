@@ -114,6 +114,8 @@ data class TvModeSettings(
     val watermark: WatermarkMode = WatermarkMode.PERIODIC,
     val watermarkCorner: Corner = Corner.TOP_RIGHT,
     val watermarkOpacity: Int = 70,
+    /** The channel logo on screen, as a percentage of its normal size. */
+    val watermarkSize: Int = 100,
     val ratingBug: Boolean = true,
     val displayMode: DisplayMode = DisplayMode.ORIGINAL,
     val scanlines: Scanlines = Scanlines.OFF,
@@ -245,6 +247,7 @@ class TvModeSettingsStore
                 .putString("watermark", next.watermark.name)
                 .putString("watermarkCorner", next.watermarkCorner.name)
                 .putInt("watermarkOpacity", next.watermarkOpacity)
+                .putInt("watermarkSize", next.watermarkSize)
                 .putBoolean("ratingBug", next.ratingBug)
                 .putString("displayMode", next.displayMode.name)
                 .putString("scanlines", next.scanlines.name)
@@ -283,6 +286,7 @@ class TvModeSettingsStore
                 watermark = enumOr(prefs.getString("watermark", null), d.watermark),
                 watermarkCorner = enumOr(prefs.getString("watermarkCorner", null), d.watermarkCorner),
                 watermarkOpacity = prefs.getInt("watermarkOpacity", d.watermarkOpacity),
+                watermarkSize = prefs.getInt("watermarkSize", d.watermarkSize),
                 ratingBug = prefs.getBoolean("ratingBug", d.ratingBug),
                 displayMode = enumOr(prefs.getString("displayMode", null), d.displayMode),
                 scanlines = enumOr(prefs.getString("scanlines", null), d.scanlines),

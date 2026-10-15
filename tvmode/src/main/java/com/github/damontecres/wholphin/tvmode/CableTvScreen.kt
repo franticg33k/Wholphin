@@ -291,7 +291,7 @@ private fun FullScreen(
     val playing = !state.showStatic && !state.loading
     state.playing?.takeIf { it.trailer && playing && !state.showBanner }?.let { TrailerPanel(it, state.trailerTarget, settings.clock24h) }
     if (playing) {
-        Watermark(state.channel, settings.watermark, settings.watermarkCorner, settings.watermarkOpacity, clock)
+        Watermark(state.channel, settings.watermark, settings.watermarkCorner, settings.watermarkOpacity, clock, settings.watermarkSize)
         if (settings.featurePresentation) FeaturePresentationCard(state.programStart, clock)
         if (settings.ratingBug) RatingBug(state.programStart, clock)
         if (settings.upNextCard && !state.showBanner) UpNextCard(state.now, state.next, clock, settings.clock24h)

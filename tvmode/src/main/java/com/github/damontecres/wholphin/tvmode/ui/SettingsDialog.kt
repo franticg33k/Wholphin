@@ -197,6 +197,11 @@ fun SettingsDialog(
                     }
                 }
                 item {
+                    SettingRow("Logo size", "${settings.watermarkSize}%") {
+                        onChange { it.copy(watermarkSize = SIZES[(SIZES.indexOf(it.watermarkSize) + 1) % SIZES.size]) }
+                    }
+                }
+                item {
                     SettingRow(
                         "Rating badge when a programme starts",
                         onOff(settings.ratingBug),
@@ -246,6 +251,7 @@ fun SettingsDialog(
 }
 
 private val OPACITIES = listOf(40, 55, 70, 85, 100)
+private val SIZES = listOf(50, 75, 100, 150, 200, 300)
 private val SIGN_OFF_HOURS = listOf(0, 2, 3, 4, 6, 8)
 
 private fun onOff(value: Boolean) = if (value) "On" else "Off"
