@@ -30,7 +30,8 @@ The app touches very little so rebasing on upstream stays easy:
 | (guide button) ✕ CLOSE | | Leave TV mode, back to where you came from |
 | Long press Back, Last | Previous channel | |
 | Play/Pause | Pause (a "broadcast paused" screensaver); any key rejoins live | |
-| CC (Captions) | Subtitles on/off | |
+| CC (Captions) | Subtitles: Off, On, Auto | |
+| A, audio-track key | Pick audio and subtitle tracks | |
 | `*` (or yellow) | Mark this channel as a favourite, or clear it | Same, for the channel in focus (holding OK on a programme does too) |
 | `#` (or blue) | Channel up/down: favourites only, or all channels | |
 | Guide / Menu | Open the guide | Close the guide |
@@ -63,10 +64,15 @@ classic cable-guide apps in behaviour and layout only; every asset is original o
 - **Themes:** Retro cable (navy, pastel cells, yellow focus, Share Tech Mono), Midnight, Phosphor and Modern, plus
   your own: Settings → Edit themes starts a copy of the current theme, and every colour role (background, bars, cells
   by type, focus, text, time marker) can be set from swatches or a hex code. Custom themes are kept on the device.
-- **Subtitles:** off by default. The remote's CC key (or Settings → Subtitles) turns them on. They use the
-  programme's track in the preferred language (Settings → Subtitle language; "Device language" by default), or its
-  first full track if none matches. Embedded tracks (SRT, ASS with styling, PGS) and external subtitle files next to
-  the video both work. They're drawn in the caption style from Android's accessibility settings.
+- **Audio and subtitles:** press **A** (or the remote's audio-track key, or *AUDIO & SUBS* in the guide's top bar) to
+  pick the audio and subtitle track of what is playing; the choice lasts for that programme.
+  - *Subtitles* (Settings, or the CC key) has three modes: **Off**, **On**, and **Auto**, the default, which shows
+    subtitles only when the audio isn't in your language (foreign films, anime) and keeps them off otherwise.
+  - *Audio language* (Settings) picks the audio track: **File default** (usually the original language; the default),
+    the device language, or a language.
+  - Subtitles use the track in your *Subtitle language* ("Device language" by default), or the first full track if none
+    matches. Embedded tracks (SRT, ASS with styling, PGS) and subtitle files next to the video both work, drawn in
+    Android's caption style.
 - **Favourites:** mark channels with `*` (or yellow, or hold OK on a programme in the guide). Favourites show a ★ in
   the guide and get their own **★ Favourites** tab. `#` (or Settings → *Channel up/down: favourites only*) makes
   channel up/down visit only the favourites; typing a number or using the guide still reaches every channel. They are

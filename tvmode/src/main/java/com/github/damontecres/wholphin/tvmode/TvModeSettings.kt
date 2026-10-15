@@ -1,6 +1,7 @@
 package com.github.damontecres.wholphin.tvmode
 
 import android.content.Context
+import com.github.damontecres.wholphin.tvmode.core.SubtitleMode
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -127,8 +128,10 @@ data class TvModeSettings(
     /** A custom theme's id, or -1 for [theme]. */
     val customTheme: Int = -1,
     val uiSounds: Boolean = true,
-    /** Show subtitles when the programme has them. */
-    val subtitles: Boolean = false,
+    /** When subtitles show: never, always, or only when the audio isn't in the viewer's language. */
+    val subtitleMode: SubtitleMode = SubtitleMode.AUTO,
+    /** Preferred audio language: "" follows the file's own default, "device" the device language, else a code. */
+    val audioLanguage: String = "",
     /** Preferred subtitle language ("eng", ...); empty follows the device language. */
     val subtitleLanguage: String = "",
     /** Channel up/down visit only the favourite channels (when there are any). */
@@ -254,7 +257,8 @@ class TvModeSettingsStore
                 .putString("focus", next.focus.name)
                 .putInt("customTheme", next.customTheme)
                 .putBoolean("uiSounds", next.uiSounds)
-                .putBoolean("subtitles", next.subtitles)
+                .putString("subtitleMode", next.subtitleMode.name)
+                .putString("audioLanguage", next.audioLanguage)
                 .putString("subtitleLanguage", next.subtitleLanguage)
                 .putBoolean("favouritesOnly", next.favouritesOnly)
                 .putBoolean("backExits", next.backExits)
@@ -291,7 +295,11 @@ class TvModeSettingsStore
                 focus = enumOr(prefs.getString("focus", null), d.focus),
                 customTheme = prefs.getInt("customTheme", d.customTheme),
                 uiSounds = prefs.getBoolean("uiSounds", d.uiSounds),
-                subtitles = prefs.getBoolean("subtitles", d.subtitles),
+                // Before modes there was an on/off switch: "on" stays on; "off" is mostly the old default, so it gets Auto.
+                subtitleMode =
+                    prefs.getString("subtitleMode", null)?.let { enumOr(it, d.subtitleMode) }
+                        ?: if (prefs.getBoolean("subtitles", false)) SubtitleMode.ON else d.subtitleMode,
+                audioLanguage = prefs.getString("audioLanguage", d.audioLanguage) ?: d.audioLanguage,
                 subtitleLanguage = prefs.getString("subtitleLanguage", d.subtitleLanguage) ?: d.subtitleLanguage,
                 favouritesOnly = prefs.getBoolean("favouritesOnly", d.favouritesOnly),
                 backExits = prefs.getBoolean("backExits", d.backExits),

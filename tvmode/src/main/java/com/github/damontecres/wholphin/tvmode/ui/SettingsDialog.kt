@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.github.damontecres.wholphin.tvmode.SUBTITLE_LANGUAGES
 import com.github.damontecres.wholphin.tvmode.TvModeSettings
+import com.github.damontecres.wholphin.tvmode.core.AUDIO_LANGUAGES
 
 /** TV mode settings: OK on a row cycles its value. */
 @Composable
@@ -102,7 +103,19 @@ fun SettingsDialog(
                     item { SettingRow("   Row status: $homeRowStatus", "Refresh / add") { onHomeRow() } }
                 }
                 item { SettingRow("Interface sounds", onOff(settings.uiSounds)) { onChange { it.copy(uiSounds = !it.uiSounds) } } }
-                item { SettingRow("Subtitles (CC key)", onOff(settings.subtitles)) { onChange { it.copy(subtitles = !it.subtitles) } } }
+                item {
+                    SettingRow(
+                        "Subtitles (CC key)",
+                        settings.subtitleMode.label,
+                    ) { onChange { it.copy(subtitleMode = it.subtitleMode.next()) } }
+                }
+                item {
+                    val languages = AUDIO_LANGUAGES
+                    val at = languages.indexOfFirst { it.first == settings.audioLanguage }.coerceAtLeast(0)
+                    SettingRow("Audio language (A key to pick)", languages[at].second) {
+                        onChange { it.copy(audioLanguage = languages[(at + 1) % languages.size].first) }
+                    }
+                }
                 item {
                     val languages = SUBTITLE_LANGUAGES
                     val at = languages.indexOfFirst { it.first == settings.subtitleLanguage }.coerceAtLeast(0)
