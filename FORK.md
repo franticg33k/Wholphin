@@ -58,10 +58,12 @@ fall out of step.
 
 **Automatically:** the *Sync upstream* workflow runs every Monday (or from the Actions tab):
 
-1. It fast-forwards `main` to upstream and copies upstream's tags.
+1. It fast-forwards `main` to upstream and copies upstream's version tags (`v*`; its rolling `develop*` tags are left alone, since they move and can't be fetched over the fork's old copies).
 2. It merges upstream into a `sync/upstream-<date>` branch cut from `cable-tv`.
 3. It builds and tests the merge.
-4. It opens a PR into `cable-tv` with the result, or an issue listing the files when the merge conflicts.
+4. It opens a PR into `cable-tv` with the result, or an issue when the merge conflicts or when it needs `SYNC_TOKEN` (below).
+
+If mirroring `main` fails (for example because upstream changed workflow files and there is no `SYNC_TOKEN`), the sync PR is still opened and the run is marked failed at the end.
 
 Merge that PR with a **merge commit**.
 

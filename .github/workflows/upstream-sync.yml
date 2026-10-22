@@ -1,7 +1,7 @@
 # Fork-only workflow (not in upstream Wholphin): keeps this fork current with damontecres/Wholphin.
 #
 # Weekly (or on demand) it
-#   1. fast-forwards main to upstream main and copies upstream's version tags (main is a pure mirror; never commit to it),
+#   1. fast-forwards main to upstream main and copies upstream's version tags (v*; main is a pure mirror; never commit to it),
 #   2. merges upstream main into a sync/upstream-<date> branch cut from cable-tv,
 #   3. builds and tests the result, and
 #   4. opens a PR into cable-tv with the build result, or an issue listing the conflicting files if the merge needs a human.
@@ -30,6 +30,7 @@ env:
   # A personal access token with the "workflow" scope is needed to push upstream changes to workflow files;
   # without the SYNC_TOKEN secret the built-in token is used and such syncs stop at the push step.
   GH_TOKEN: ${{ secrets.SYNC_TOKEN || github.token }}
+  HAS_SYNC_TOKEN: ${{ secrets.SYNC_TOKEN != '' }}
 
 jobs:
   sync:
@@ -47,13 +48,18 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote add upstream "$UPSTREAM"
-          git fetch --tags upstream main
+          # Only upstream's version tags are copied. Its rolling tags (develop, develop-*) move, and fetching them
+          # failed the whole run with "would clobber existing tag".
+          git fetch --no-tags upstream main '+refs/tags/v*:refs/tags/v*'
 
       - name: Mirror upstream main and tags
+        id: mirror
+        continue-on-error: true
         run: |
-          # Fails (and stops the sync) if main has commits upstream doesn't: main must stay a pure mirror.
+          # Fails if main has commits upstream doesn't (main must stay a pure mirror), or, without SYNC_TOKEN, when
+          # upstream changed a workflow file. The sync PR below doesn't depend on it; the run is marked failed at the end.
           git push origin refs/remotes/upstream/main:refs/heads/main
-          git push origin --tags
+          git push origin 'refs/tags/v*:refs/tags/v*'
 
       - name: Merge upstream into a sync branch
         id: merge
@@ -67,7 +73,12 @@ jobs:
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
           git checkout -b "$branch"
           if git merge --no-edit upstream/main; then
-            echo "result=merged" >> "$GITHUB_OUTPUT"
+            # The built-in token can't push changes to workflow files; say so instead of failing at the push.
+            if [ "$HAS_SYNC_TOKEN" != "true" ] && ! git diff --quiet cable-tv HEAD -- .github/workflows; then
+              echo "result=needs-token" >> "$GITHUB_OUTPUT"
+            else
+              echo "result=merged" >> "$GITHUB_OUTPUT"
+            fi
           else
             {
               echo "conflicts<<EOF"
@@ -101,6 +112,13 @@ jobs:
             --title "Sync upstream Wholphin ($(date -u +%Y-%m-%d))" \
             --body "Merges upstream damontecres/Wholphin main into cable-tv. $status Merge with a merge commit (not squash) so the next sync starts from here."
 
+      - name: Report that a token is needed
+        if: steps.merge.outputs.result == 'needs-token'
+        run: |
+          gh issue create --title "Upstream sync needs a token to push workflow changes ($(date -u +%Y-%m-%d))" --body "Upstream Wholphin changed files in .github/workflows, and the built-in GitHub token isn't allowed to push those. The merge itself is clean.
+
+          To let the weekly sync open its PRs on its own, create a personal access token with the \`workflow\` scope (a fine-grained token needs Contents, Pull requests and Workflows read/write on this repository) and save it as the Actions secret \`SYNC_TOKEN\`. See FORK.md, Syncing with upstream. Until then, merge upstream into cable-tv locally."
+
       - name: Report conflicts
         if: steps.merge.outputs.result == 'conflict'
         run: |
@@ -111,3 +129,9 @@ jobs:
           \`\`\`
 
           Resolve it locally: see FORK.md, Syncing with upstream."
+
+      - name: Fail if main could not be mirrored
+        if: always() && steps.mirror.outcome == 'failure'
+        run: |
+          echo "::error::Mirroring upstream main and tags failed (see the Mirror step): either main has commits upstream doesn't, or upstream changed workflow files and SYNC_TOKEN isn't set."
+          exit 1
