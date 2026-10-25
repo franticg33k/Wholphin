@@ -46,6 +46,7 @@ These are the only places a sync can conflict (about 64 lines in total):
 | `services/IntentService.kt` | a few lines that send a `wholphin://cabletv` link (the home screen row's tiles) to the TV mode |
 | `data/model/BaseItem.kt` | `destination()` sends a Cable TV channel (or a programme on one) to `Destination.CableTv` instead of Live TV playback |
 | `services/PlayerFactory.kt` | optional `loadControl` parameter on `createVideoPlayer` (TV mode starts playback after less buffering) |
+| `services/tvprovider/TvProviderWorker.kt` | the "Recently added" refresh deletes only its own row's tiles; it used to delete every preview program the app owns, which emptied the "On now" row each time the app stopped |
 
 ### Fork-only resources
 
