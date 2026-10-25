@@ -305,14 +305,28 @@ class TvProviderWorker
             }
             val programs = latest.map { convert(channelId, it).toContentValues() }.toTypedArray()
 
-            // Delete & replace
-            context.contentResolver.delete(TvContractCompat.PreviewPrograms.CONTENT_URI, null, null)
+            // Delete & replace, in this row only: the app's other rows (the TV mode's "On now") share the provider.
+            deleteProgramsOf(ContentUris.parseId(channelId))
             val count =
                 context.contentResolver.bulkInsert(
                     TvContractCompat.PreviewPrograms.CONTENT_URI,
                     programs,
                 )
             Timber.v("Inserted $count records")
+        }
+
+        private fun deleteProgramsOf(channelId: Long) {
+            val ids =
+                context.contentResolver
+                    .query(
+                        TvContractCompat.buildPreviewProgramsUriForChannel(channelId),
+                        arrayOf(TvContractCompat.PreviewPrograms._ID),
+                        null,
+                        null,
+                        null,
+                    )?.use { cursor -> generateSequence { if (cursor.moveToNext()) cursor.getLong(0) else null }.toList() }
+                    .orEmpty()
+            ids.forEach { context.contentResolver.delete(TvContractCompat.buildPreviewProgramUri(it), null, null) }
         }
 
         private fun convert(
