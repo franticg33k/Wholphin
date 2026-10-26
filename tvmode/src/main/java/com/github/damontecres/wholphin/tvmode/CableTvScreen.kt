@@ -32,7 +32,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
+import androidx.media3.common.Tracks
 import androidx.media3.common.text.Cue
 import androidx.media3.common.text.CueGroup
 import androidx.media3.ui.SubtitleView
@@ -75,6 +79,7 @@ import com.github.damontecres.wholphin.tvmode.ui.TvTheme
 import com.github.damontecres.wholphin.tvmode.ui.UpNextCard
 import com.github.damontecres.wholphin.tvmode.ui.Watermark
 import com.github.damontecres.wholphin.tvmode.ui.WeatherScreen
+import kotlinx.coroutines.delay
 
 /**
  * TV mode. Full screen: Up/Down or Channel +/- change channel, digits tune by number, OK or Back opens the guide,
@@ -329,16 +334,50 @@ private fun VideoSurface(
 ) {
     // Letterbox or pillarbox to the video's own aspect ratio (pixel aspect included) instead of stretching.
     val presentation = rememberPresentationState(player)
-    var cues by remember(player) { mutableStateOf<List<Cue>>(emptyList()) }
+    // The captions on screen follow what the player says it is showing now. The player announces changes (onCues), but
+    // a missed announcement used to leave the last line up for good, even across channels with no subtitles, because
+    // nothing more is announced then. So every event that can end a caption re-reads the player, and a once-a-second
+    // check repairs anything an event missed.
+    var cues by remember(player) { mutableStateOf(visibleCues(player)) }
     DisposableEffect(player) {
         val listener =
             object : Player.Listener {
-                override fun onCues(cueGroup: CueGroup) {
-                    cues = cueGroup.cues
+                private fun refresh() {
+                    cues = visibleCues(player)
                 }
+
+                override fun onCues(cueGroup: CueGroup) = refresh()
+
+                override fun onTracksChanged(tracks: Tracks) = refresh()
+
+                override fun onMediaItemTransition(
+                    mediaItem: MediaItem?,
+                    reason: Int,
+                ) = refresh()
+
+                override fun onTimelineChanged(
+                    timeline: Timeline,
+                    reason: Int,
+                ) = refresh()
+
+                override fun onPlaybackStateChanged(playbackState: Int) = refresh()
+
+                override fun onPositionDiscontinuity(
+                    oldPosition: Player.PositionInfo,
+                    newPosition: Player.PositionInfo,
+                    reason: Int,
+                ) = refresh()
             }
         player.addListener(listener)
+        cues = visibleCues(player)
         onDispose { player.removeListener(listener) }
+    }
+    LaunchedEffect(player) {
+        while (true) {
+            delay(CAPTION_CHECK_MS)
+            val now = visibleCues(player)
+            if (now !== cues) cues = now
+        }
     }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Box(Modifier.resizeWithContentScale(scale, presentation.videoSizeDp)) {
@@ -361,6 +400,16 @@ private fun VideoSurface(
         }
     }
 }
+
+private const val CAPTION_CHECK_MS = 1_000L
+
+/** The captions the player is showing now: none when no subtitle track is selected, whatever was last announced. */
+private fun visibleCues(player: Player): List<Cue> =
+    if (player.currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT && it.isSelected }) {
+        player.currentCues.cues
+    } else {
+        emptyList()
+    }
 
 /** Tells a short Back press from a long one. */
 private class BackPress {
