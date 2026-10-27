@@ -124,7 +124,9 @@ fun CableTvScreen(
     // Counts the times the app has come back to the screen after being off it. The video surface and the captions are
     // rebuilt each time, so nothing drawn before leaving (a frozen caption, a dead surface) survives the return.
     var comeBack by remember { mutableIntStateOf(0) }
-    val lifecycleOwner = androidx.compose.ui.platform.LocalContext.current.findActivity() as? LifecycleOwner
+    val lifecycleOwner =
+        androidx.compose.ui.platform.LocalContext.current
+            .findActivity() as? LifecycleOwner
     DisposableEffect(lifecycleOwner, viewModel) {
         if (lifecycleOwner == null) return@DisposableEffect onDispose { }
         var stopped = false
@@ -448,7 +450,7 @@ private const val CAPTION_CHECK_MS = 1_000L
 
 /** The captions the player is showing now: none when no subtitle track is selected, whatever was last announced. */
 private fun visibleCues(player: Player): List<Cue> =
-    if (!player.isReleased && player.currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT && it.isSelected }) {
+    if (player.currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT && it.isSelected }) {
         player.currentCues.cues
     } else {
         emptyList()
