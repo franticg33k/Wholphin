@@ -635,6 +635,33 @@ class CableTvViewModel
             navigator.current?.let(::tune)
         }
 
+        /** Set while the app is off screen (Home pressed, another app opened). */
+        private var backgrounded = false
+
+        /**
+         * The app left the screen. Playback stops, so nothing carries on unseen, and everything (decoder, captions,
+         * picture) starts clean when the viewer comes back and [onForeground] rejoins the live schedule. Before this,
+         * playback simply went on in the background, and coming back (above all through a home screen row, which
+         * rebuilds the screen) could leave captions frozen on one line.
+         */
+        fun onBackground() {
+            val player = _player.value ?: return
+            if (backgrounded) return
+            backgrounded = true
+            tuneJob?.cancel()
+            staticUntilMs = null
+            queued = emptyList()
+            player.stop()
+            player.clearMediaItems()
+        }
+
+        /** The app is back on screen: rejoin the live schedule where it is now. */
+        fun onForeground() {
+            if (!backgrounded) return
+            backgrounded = false
+            retune()
+        }
+
         private fun extendQueue(playing: TvSlot) {
             val channel = navigator.current ?: return
             val player = _player.value ?: return
