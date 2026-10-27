@@ -71,7 +71,10 @@ Merge that PR with a **merge commit**.
 One-time setup:
 
 - Make `cable-tv` the default branch (schedules only run from the default branch).
-- Settings → Actions → General → allow GitHub Actions to create and approve pull requests.
+- Settings → Actions → General → allow GitHub Actions to create and approve pull requests. Without it the sync branch is
+  pushed but the PR isn't opened; the run says so and links to the page that opens it.
+- Optional: Settings → General → Features → turn on Issues (forks have them off). The workflow also writes what needs
+  doing into the run's summary, so the sync works without it.
 - Optional: add a `SYNC_TOKEN` secret, a personal access token with `repo` and `workflow` scopes. Without it, a sync
   where upstream changed its workflow files can't be pushed; use GitHub's *Sync fork* button for `main` and merge
   by hand.
