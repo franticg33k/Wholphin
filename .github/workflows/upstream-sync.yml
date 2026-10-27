@@ -108,30 +108,48 @@ jobs:
           else
             status="**Build or tests failed on the merge** - see ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}. Fix on this branch before merging."
           fi
-          gh pr create --base cable-tv --head "${{ steps.merge.outputs.branch }}" \
+          if ! gh pr create --base cable-tv --head "${{ steps.merge.outputs.branch }}" \
             --title "Sync upstream Wholphin ($(date -u +%Y-%m-%d))" \
-            --body "Merges upstream damontecres/Wholphin main into cable-tv. $status Merge with a merge commit (not squash) so the next sync starts from here."
+            --body "Merges upstream damontecres/Wholphin main into cable-tv. $status Merge with a merge commit (not squash) so the next sync starts from here."; then
+            compare="${{ github.server_url }}/${{ github.repository }}/compare/cable-tv...${{ steps.merge.outputs.branch }}?expand=1"
+            echo "::error::The sync branch is pushed but the PR couldn't be opened. Turn on Settings > Actions > General > Workflow permissions > 'Allow GitHub Actions to create and approve pull requests'. Open the PR by hand: $compare"
+            {
+              echo "### Sync branch ready, PR not opened"
+              echo "$status"
+              echo ""
+              echo "[Open the pull request]($compare), merging with a merge commit. To let the workflow do it, turn on *Allow GitHub Actions to create and approve pull requests* (Settings > Actions > General)."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
 
       - name: Report that a token is needed
         if: steps.merge.outputs.result == 'needs-token'
         run: |
-          gh issue create --title "Upstream sync needs a token to push workflow changes ($(date -u +%Y-%m-%d))" --body "Upstream Wholphin changed files in .github/workflows, and the built-in GitHub token isn't allowed to push those. The merge itself is clean.
-
-          To let the weekly sync open its PRs on its own, create a personal access token with the \`workflow\` scope (a fine-grained token needs Contents, Pull requests and Workflows read/write on this repository) and save it as the Actions secret \`SYNC_TOKEN\`. See FORK.md, Syncing with upstream. Until then, merge upstream into cable-tv locally."
+          msg="Upstream Wholphin changed files in .github/workflows, and the built-in GitHub token isn't allowed to push those. The merge itself is clean. Create a personal access token with the workflow scope (a fine-grained token needs Contents, Pull requests and Workflows read/write on this repository), save it as the Actions secret SYNC_TOKEN, and run this workflow again. Until then, merge upstream into cable-tv locally (FORK.md, Syncing with upstream)."
+          echo "::error::$msg"
+          echo "### Upstream sync needs a token" >> "$GITHUB_STEP_SUMMARY"
+          echo "$msg" >> "$GITHUB_STEP_SUMMARY"
+          # Also leave an issue where the repository has Issues turned on (forks have them off by default).
+          gh issue create --title "Upstream sync needs a token to push workflow changes ($(date -u +%Y-%m-%d))" --body "$msg" || true
+          exit 1
 
       - name: Report conflicts
         if: steps.merge.outputs.result == 'conflict'
         run: |
-          gh issue create --title "Upstream sync needs a manual merge ($(date -u +%Y-%m-%d))" --body "Merging upstream main into cable-tv conflicts in:
+          msg="Merging upstream main into cable-tv conflicts in: ${{ steps.merge.outputs.conflicts }}. Resolve it locally: see FORK.md, Syncing with upstream."
+          echo "::error::$msg"
+          echo "### Upstream sync needs a manual merge" >> "$GITHUB_STEP_SUMMARY"
+          echo "$msg" >> "$GITHUB_STEP_SUMMARY"
+          gh issue create --title "Upstream sync needs a manual merge ($(date -u +%Y-%m-%d))" --body "$msg" || true
+          exit 1
 
-          \`\`\`
-          ${{ steps.merge.outputs.conflicts }}
-          \`\`\`
-
-          Resolve it locally: see FORK.md, Syncing with upstream."
-
-      - name: Fail if main could not be mirrored
+      - name: Report a failed main mirror
         if: always() && steps.mirror.outcome == 'failure'
         run: |
-          echo "::error::Mirroring upstream main and tags failed (see the Mirror step): either main has commits upstream doesn't, or upstream changed workflow files and SYNC_TOKEN isn't set."
-          exit 1
+          if [ "$HAS_SYNC_TOKEN" = "true" ]; then
+            echo "::error::Mirroring upstream main and tags failed (see the Mirror step): most likely main has commits upstream doesn't (main must stay a pure mirror)."
+            exit 1
+          fi
+          # Without SYNC_TOKEN, upstream's workflow changes can't be pushed to main. main is only a mirror (cable-tv is
+          # what builds), so this is a warning; GitHub's "Sync fork" button, or SYNC_TOKEN, brings main up to date.
+          echo "::warning::main was not updated from upstream: the built-in token can't push workflow changes. Add the SYNC_TOKEN secret (see FORK.md) or use GitHub's Sync fork button."
