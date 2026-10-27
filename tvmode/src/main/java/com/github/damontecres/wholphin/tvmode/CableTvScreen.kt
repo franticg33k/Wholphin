@@ -12,7 +12,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.movableContentOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -32,6 +34,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -116,14 +121,48 @@ fun CableTvScreen(
     LaunchedEffect(state.channel?.id) { if (settings.uiSounds && state.channel != null) sounds.channelChange() }
     LaunchedEffect(state.showGuide) { if (settings.uiSounds && state.showGuide) sounds.guideOpen() }
 
+    // Counts the times the app has come back to the screen after being off it. The video surface and the captions are
+    // rebuilt each time, so nothing drawn before leaving (a frozen caption, a dead surface) survives the return.
+    var comeBack by remember { mutableIntStateOf(0) }
+    val lifecycleOwner =
+        androidx.compose.ui.platform.LocalContext.current
+            .findActivity() as? LifecycleOwner
+    DisposableEffect(lifecycleOwner, viewModel) {
+        if (lifecycleOwner == null) return@DisposableEffect onDispose { }
+        var stopped = false
+        val observer =
+            LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_STOP -> {
+                        stopped = true
+                        viewModel.onBackground()
+                    }
+
+                    Lifecycle.Event.ON_START -> {
+                        if (stopped) {
+                            stopped = false
+                            comeBack++
+                            viewModel.onForeground()
+                        }
+                    }
+
+                    else -> {
+                        Unit
+                    }
+                }
+            }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     // One video surface, moved between full screen and the guide's preview window without being recreated.
     val video =
         remember(player) {
-            player?.let { p -> movableContentOf { scale: ContentScale -> VideoSurface(p, scale) } }
+            player?.let { p -> movableContentOf { scale: ContentScale, epoch: Int -> VideoSurface(p, scale, epoch) } }
         }
     val picture: @Composable (Boolean, ContentScale) -> Unit = { compact, scale ->
         Box(Modifier.fillMaxSize()) {
-            video?.invoke(scale)
+            video?.invoke(scale, comeBack)
             if (state.channel?.kind == ChannelKind.WEATHER) {
                 WeatherScreen(state.channel, state.weather, state.weatherError, clock, settings.clock24h, compact, Modifier.fillMaxSize())
                 return@Box
@@ -331,6 +370,7 @@ private fun sleepLabel(
 private fun VideoSurface(
     player: Player,
     scale: ContentScale,
+    epoch: Int,
 ) {
     // Letterbox or pillarbox to the video's own aspect ratio (pixel aspect included) instead of stretching.
     val presentation = rememberPresentationState(player)
@@ -372,7 +412,8 @@ private fun VideoSurface(
         cues = visibleCues(player)
         onDispose { player.removeListener(listener) }
     }
-    LaunchedEffect(player) {
+    LaunchedEffect(player, epoch) {
+        cues = visibleCues(player)
         while (true) {
             delay(CAPTION_CHECK_MS)
             val now = visibleCues(player)
@@ -381,22 +422,26 @@ private fun VideoSurface(
     }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Box(Modifier.resizeWithContentScale(scale, presentation.videoSizeDp)) {
-            PlayerSurface(
-                player = player,
-                surfaceType = SURFACE_TYPE_SURFACE_VIEW,
-                modifier = Modifier.fillMaxSize(),
-            )
-            // Subtitles over the picture, in the viewer's caption style (Android accessibility settings).
-            AndroidView(
-                factory = { context ->
-                    SubtitleView(context).apply {
-                        setUserDefaultStyle()
-                        setUserDefaultTextSize()
-                    }
-                },
-                update = { it.setCues(cues) },
-                modifier = Modifier.fillMaxSize(),
-            )
+            // Rebuilt each time the app comes back (see comeBack), so a surface or caption view from before it left is
+            // never reused.
+            key(epoch) {
+                PlayerSurface(
+                    player = player,
+                    surfaceType = SURFACE_TYPE_SURFACE_VIEW,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                // Subtitles over the picture, in the viewer's caption style (Android accessibility settings).
+                AndroidView(
+                    factory = { context ->
+                        SubtitleView(context).apply {
+                            setUserDefaultStyle()
+                            setUserDefaultTextSize()
+                        }
+                    },
+                    update = { it.setCues(cues) },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
         }
     }
 }
