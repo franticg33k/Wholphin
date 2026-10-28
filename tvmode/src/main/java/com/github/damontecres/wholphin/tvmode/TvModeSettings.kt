@@ -140,11 +140,32 @@ data class TvModeSettings(
     val favouritesOnly: Boolean = false,
     /** Back in the guide leaves TV mode (otherwise it returns to full screen and the guide's CLOSE button leaves). */
     val backExits: Boolean = false,
+    /** What the screensaver shows. */
+    val screensaver: ScreensaverKind = ScreensaverKind.PHOTOS,
+    /** How long the surfing screensaver stays on a channel, in seconds. */
+    val surfSeconds: Int = 30,
     /** Show an "On now" row on the Android TV home screen. */
     val homeRow: Boolean = true,
     /** What the app's own home page lists in its Live TV row. */
     val homeLiveTv: HomeLiveTv = HomeLiveTv.CABLE_TV,
 )
+
+/** What the screensaver shows. */
+enum class ScreensaverKind(
+    val label: String,
+) {
+    /** The app's own screensaver: backdrops and posters from the library. */
+    PHOTOS("Backdrops and posters"),
+
+    /** Cable TV channels, changed every so often, as if channel surfing. */
+    CABLE_TV("Cable TV channel surfing"),
+}
+
+/** The other kind of screensaver. */
+fun ScreensaverKind.other(): ScreensaverKind = if (this == ScreensaverKind.PHOTOS) ScreensaverKind.CABLE_TV else ScreensaverKind.PHOTOS
+
+/** How long the surfing screensaver stays on one channel, in seconds. */
+val SURF_SECONDS: List<Int> = listOf(15, 30, 60, 120, 300)
 
 /** What the app's home page shows in its Live TV row. */
 enum class HomeLiveTv(
@@ -278,6 +299,8 @@ class TvModeSettingsStore
                 .putString("subtitleLanguage", next.subtitleLanguage)
                 .putBoolean("favouritesOnly", next.favouritesOnly)
                 .putBoolean("backExits", next.backExits)
+                .putString("screensaver", next.screensaver.name)
+                .putInt("surfSeconds", next.surfSeconds)
                 .putBoolean("homeRow", next.homeRow)
                 .putString("homeLiveTv", next.homeLiveTv.name)
                 .apply()
@@ -321,6 +344,8 @@ class TvModeSettingsStore
                 subtitleLanguage = prefs.getString("subtitleLanguage", d.subtitleLanguage) ?: d.subtitleLanguage,
                 favouritesOnly = prefs.getBoolean("favouritesOnly", d.favouritesOnly),
                 backExits = prefs.getBoolean("backExits", d.backExits),
+                screensaver = enumOr(prefs.getString("screensaver", null), d.screensaver),
+                surfSeconds = prefs.getInt("surfSeconds", d.surfSeconds),
                 homeRow = prefs.getBoolean("homeRow", d.homeRow),
                 homeLiveTv = enumOr(prefs.getString("homeLiveTv", null), d.homeLiveTv),
             )

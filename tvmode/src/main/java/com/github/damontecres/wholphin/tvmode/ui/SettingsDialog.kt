@@ -29,8 +29,11 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.github.damontecres.wholphin.tvmode.HomeLiveTv
 import com.github.damontecres.wholphin.tvmode.SUBTITLE_LANGUAGES
+import com.github.damontecres.wholphin.tvmode.SURF_SECONDS
+import com.github.damontecres.wholphin.tvmode.ScreensaverKind
 import com.github.damontecres.wholphin.tvmode.TvModeSettings
 import com.github.damontecres.wholphin.tvmode.core.AUDIO_LANGUAGES
+import com.github.damontecres.wholphin.tvmode.other
 
 /** TV mode settings: OK on a row cycles its value. */
 @Composable
@@ -114,6 +117,18 @@ fun SettingsDialog(
                     }
                 }
                 item { SettingRow("Interface sounds", onOff(settings.uiSounds)) { onChange { it.copy(uiSounds = !it.uiSounds) } } }
+                item {
+                    SettingRow("Screensaver", settings.screensaver.label) {
+                        onChange { it.copy(screensaver = it.screensaver.other()) }
+                    }
+                }
+                if (settings.screensaver == ScreensaverKind.CABLE_TV) {
+                    item {
+                        SettingRow("   Change channel every", surfLabel(settings.surfSeconds)) {
+                            onChange { it.copy(surfSeconds = nextSurfSeconds(it.surfSeconds)) }
+                        }
+                    }
+                }
                 item {
                     SettingRow(
                         "Subtitles (CC key)",
@@ -292,3 +307,12 @@ private fun SettingRow(
         TvText("‹ $value ›", size = 14.sp, bold = true, color = if (focused) theme.focusedText else theme.accent)
     }
 }
+
+private fun surfLabel(seconds: Int): String =
+    when {
+        seconds < 60 -> "$seconds seconds"
+        seconds == 60 -> "1 minute"
+        else -> "${seconds / 60} minutes"
+    }
+
+private fun nextSurfSeconds(current: Int): Int = SURF_SECONDS.getOrElse(SURF_SECONDS.indexOf(current) + 1) { SURF_SECONDS.first() }
