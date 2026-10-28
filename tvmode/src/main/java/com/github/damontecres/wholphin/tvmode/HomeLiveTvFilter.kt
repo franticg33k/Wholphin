@@ -69,13 +69,13 @@ class HomeLiveTvFilter
 
         private fun uuidOf(id: String): UUID? =
             runCatching {
-                val plain = id.replace("-", "")
-                UUID.fromString("${plain.substring(0, 8)}-${plain.substring(8, 12)}-${plain.substring(12, 16)}-${plain.substring(16, 20)}-${plain.substring(20)}")
+                UUID.fromString(id.replace("-", "").replace(DASHES, "$1-$2-$3-$4-$5"))
             }.getOrNull()
 
         private companion object {
             const val TAG = "CableTvHomeRow"
             const val TTL_MS = 5 * 60_000L
             const val DEFAULT_TITLE = "Cable TV"
+            val DASHES = Regex("(.{8})(.{4})(.{4})(.{4})(.{12})")
         }
     }
