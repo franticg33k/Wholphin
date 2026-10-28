@@ -150,7 +150,9 @@ class SurfingSession(
             }
             misses = 0
             _state.update { it.copy(channel = channel, title = title, tunes = it.tunes + 1) }
-            val seconds = settings.settings.value.surfSeconds.coerceAtLeast(MIN_SECONDS)
+            val seconds =
+                settings.settings.value.surfSeconds
+                    .coerceAtLeast(MIN_SECONDS)
             delay(seconds * 1_000L)
         }
     }
