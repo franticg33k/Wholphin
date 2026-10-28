@@ -150,7 +150,8 @@ class SurfingSession(
             }
             misses = 0
             _state.update { it.copy(channel = channel, title = title, tunes = it.tunes + 1) }
-            delay(settings.settings.value.surfSeconds.coerceAtLeast(5) * 1_000L)
+            val seconds = settings.settings.value.surfSeconds.coerceAtLeast(MIN_SECONDS)
+            delay(seconds * 1_000L)
         }
     }
 
@@ -168,7 +169,8 @@ class SurfingSession(
                 Log.w(TAG, "No schedule for ${channel.number}: ${e.message}")
                 null
             } ?: return null
-        val plan = TuneInPlanner.plan(schedule.slots.sortedBy { it.startMs }.dropWhile { it.endMs <= now }, client.clock.nowMs(), queueAhead = 1)
+        val upcoming = schedule.slots.sortedBy { it.startMs }.dropWhile { it.endMs <= now }
+        val plan = TuneInPlanner.plan(upcoming, client.clock.nowMs(), queueAhead = 1)
         val play = plan as? TunePlan.Play ?: return null
         val first = play.items.first().slot
         if (first.audio || first.itemId == null) return null
@@ -202,6 +204,7 @@ class SurfingSession(
         const val LOOK_AHEAD_MS = 90 * 60_000L
         const val RETRY_MS = 3_000L
         const val MAX_MISSES = 8
+        const val MIN_SECONDS = 5
     }
 }
 

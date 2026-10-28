@@ -32,6 +32,7 @@ import com.github.damontecres.wholphin.tvmode.SURF_SECONDS
 import com.github.damontecres.wholphin.tvmode.ScreensaverKind
 import com.github.damontecres.wholphin.tvmode.TvModeSettings
 import com.github.damontecres.wholphin.tvmode.core.AUDIO_LANGUAGES
+import com.github.damontecres.wholphin.tvmode.other
 
 /** TV mode settings: OK on a row cycles its value. */
 @Composable
@@ -104,27 +105,19 @@ fun SettingsDialog(
                 if (settings.homeRow && homeRowStatus.isNotBlank()) {
                     item { SettingRow("   Row status: $homeRowStatus", "Refresh / add") { onHomeRow() } }
                 }
+                item { SettingRow("Interface sounds", onOff(settings.uiSounds)) { onChange { it.copy(uiSounds = !it.uiSounds) } } }
                 item {
-                    SettingRow(
-                        "Screensaver",
-                        settings.screensaver.label,
-                    ) {
-                        onChange {
-                            it.copy(screensaver = if (it.screensaver == ScreensaverKind.PHOTOS) ScreensaverKind.CABLE_TV else ScreensaverKind.PHOTOS)
-                        }
+                    SettingRow("Screensaver", settings.screensaver.label) {
+                        onChange { it.copy(screensaver = it.screensaver.other()) }
                     }
                 }
                 if (settings.screensaver == ScreensaverKind.CABLE_TV) {
                     item {
                         SettingRow("   Change channel every", surfLabel(settings.surfSeconds)) {
-                            onChange {
-                                val next = SURF_SECONDS.getOrElse(SURF_SECONDS.indexOf(it.surfSeconds) + 1) { SURF_SECONDS.first() }
-                                it.copy(surfSeconds = next)
-                            }
+                            onChange { it.copy(surfSeconds = nextSurfSeconds(it.surfSeconds)) }
                         }
                     }
                 }
-                item { SettingRow("Interface sounds", onOff(settings.uiSounds)) { onChange { it.copy(uiSounds = !it.uiSounds) } } }
                 item {
                     SettingRow(
                         "Subtitles (CC key)",
@@ -304,4 +297,11 @@ private fun SettingRow(
     }
 }
 
-private fun surfLabel(seconds: Int): String = if (seconds < 60) "$seconds seconds" else if (seconds == 60) "1 minute" else "${seconds / 60} minutes"
+private fun surfLabel(seconds: Int): String =
+    when {
+        seconds < 60 -> "$seconds seconds"
+        seconds == 60 -> "1 minute"
+        else -> "${seconds / 60} minutes"
+    }
+
+private fun nextSurfSeconds(current: Int): Int = SURF_SECONDS.getOrElse(SURF_SECONDS.indexOf(current) + 1) { SURF_SECONDS.first() }
