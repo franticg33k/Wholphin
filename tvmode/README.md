@@ -122,6 +122,10 @@ to that channel (`wholphin://cabletv?channel=<id>`; `wholphin://cabletv` opens t
   that (the prompt needs the app in front, so it can't appear from the background).
 - **In the app's own Live TV rows:** Cable TV channels (and programmes on them) listed in Wholphin's Live TV rows on the
   home page open the TV mode, tuned to that channel, instead of Jellyfin's plain Live TV player.
+- **Cable TV instead of Live TV on the home page:** the app's own home page has a Live TV row ("Watch live", and the
+  channels row). By default it now lists only the Cable TV channels, named after the service ("Cable TV"), instead of
+  every Live TV channel on the server. Settings → *Live TV row on the app's home page* switches between *Cable TV
+  channels only* and *All Live TV*. On a server without Cable TV the row is the normal Live TV row either way.
 - The row is only taken off the home screen when the server has no Cable TV channels, the plugin is missing, or you
   turn it off. A failed refresh (offline, signed out, server busy) or a moment with every channel off the air leaves
   the last tiles in place. Refreshes are logged under the tag `CableTvHomeRow`.

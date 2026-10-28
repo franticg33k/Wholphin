@@ -146,6 +146,8 @@ data class TvModeSettings(
     val surfSeconds: Int = 30,
     /** Show an "On now" row on the Android TV home screen. */
     val homeRow: Boolean = true,
+    /** What the app's own home page lists in its Live TV row. */
+    val homeLiveTv: HomeLiveTv = HomeLiveTv.CABLE_TV,
 )
 
 /** What the screensaver shows. */
@@ -164,6 +166,17 @@ fun ScreensaverKind.other(): ScreensaverKind = if (this == ScreensaverKind.PHOTO
 
 /** How long the surfing screensaver stays on one channel, in seconds. */
 val SURF_SECONDS: List<Int> = listOf(15, 30, 60, 120, 300)
+
+/** What the app's home page shows in its Live TV row. */
+enum class HomeLiveTv(
+    val label: String,
+) {
+    /** Only the Cable TV channels, and the row is named after the service ("Cable TV"). */
+    CABLE_TV("Cable TV channels only"),
+
+    /** Everything Jellyfin's Live TV has, as the app does without Cable TV. */
+    LIVE_TV("All Live TV"),
+}
 
 /** A theme made in the theme editor: a built-in theme with some colour roles replaced. */
 data class CustomTheme(
@@ -289,6 +302,7 @@ class TvModeSettingsStore
                 .putString("screensaver", next.screensaver.name)
                 .putInt("surfSeconds", next.surfSeconds)
                 .putBoolean("homeRow", next.homeRow)
+                .putString("homeLiveTv", next.homeLiveTv.name)
                 .apply()
         }
 
@@ -333,6 +347,7 @@ class TvModeSettingsStore
                 screensaver = enumOr(prefs.getString("screensaver", null), d.screensaver),
                 surfSeconds = prefs.getInt("surfSeconds", d.surfSeconds),
                 homeRow = prefs.getBoolean("homeRow", d.homeRow),
+                homeLiveTv = enumOr(prefs.getString("homeLiveTv", null), d.homeLiveTv),
             )
         }
 

@@ -10,6 +10,7 @@ import com.github.damontecres.wholphin.data.model.createGenreDestination
 import com.github.damontecres.wholphin.data.model.createStudioDestination
 import com.github.damontecres.wholphin.preferences.HomePagePreferences
 import com.github.damontecres.wholphin.services.hilt.AuthOkHttpClient
+import com.github.damontecres.wholphin.tvmode.HomeLiveTvFilter
 import com.github.damontecres.wholphin.ui.HomeItemFields
 import com.github.damontecres.wholphin.ui.ProgramItemFields
 import com.github.damontecres.wholphin.ui.components.getGenreImageMap
@@ -77,6 +78,7 @@ class HomeDataService
         private val latestNextUpService: LatestNextUpService,
         private val imageUrlService: ImageUrlService,
         private val suggestionService: SuggestionService,
+        private val cableTvHome: HomeLiveTvFilter,
     ) {
         /**
          * Fetch the data from the server for a given [HomeRowConfig]
@@ -571,6 +573,8 @@ class HomeDataService
                 }
 
                 is HomeRowConfig.TvPrograms -> {
+                    // With Cable TV chosen for the home page, only its channels, and the row carries the service's name.
+                    val cable = cableTvHome.channels()
                     val request =
                         GetProgramsDto(
                             userId = userDto.id,
@@ -582,6 +586,7 @@ class HomeDataService
                             imageTypeLimit = 1,
                             isAiring = true,
                             minEndDate = DateTime.now().plusMinutes(1),
+                            channelIds = cable?.liveTvIds,
                         )
                     if (usePaging) {
                         ApiRequestPager(
@@ -598,7 +603,7 @@ class HomeDataService
                             .map { BaseItem(it, row.viewOptions.useSeries) }
                     }.let {
                         Success(
-                            ResStringProvider(R.string.watch_live),
+                            cable?.let { c -> StringStringProvider(c.title) } ?: ResStringProvider(R.string.watch_live),
                             it,
                             row.viewOptions,
                             rowType = row,
@@ -608,6 +613,7 @@ class HomeDataService
                 }
 
                 is HomeRowConfig.TvChannels -> {
+                    val cable = cableTvHome.channels()
                     val request =
                         GetLiveTvChannelsRequest(
                             userId = userDto.id,
@@ -615,7 +621,7 @@ class HomeDataService
                             limit = limit,
                             enableImages = true,
                         )
-                    if (usePaging) {
+                    if (usePaging && cable == null) {
                         ApiRequestPager(
                             api,
                             request,
@@ -627,9 +633,10 @@ class HomeDataService
                         api.liveTvApi
                             .getLiveTvChannels(request)
                             .toBaseItems(api, row.viewOptions.useSeries)
+                            .let { channels -> if (cable == null) channels else channels.filter { c -> cable.contains(c.id) } }
                     }.let {
                         Success(
-                            ResStringProvider(R.string.channels),
+                            cable?.let { c -> StringStringProvider(c.title) } ?: ResStringProvider(R.string.channels),
                             it,
                             row.viewOptions,
                             rowType = row,
