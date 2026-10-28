@@ -142,7 +142,20 @@ data class TvModeSettings(
     val backExits: Boolean = false,
     /** Show an "On now" row on the Android TV home screen. */
     val homeRow: Boolean = true,
+    /** What the app's own home page lists in its Live TV row. */
+    val homeLiveTv: HomeLiveTv = HomeLiveTv.CABLE_TV,
 )
+
+/** What the app's home page shows in its Live TV row. */
+enum class HomeLiveTv(
+    val label: String,
+) {
+    /** Only the Cable TV channels, and the row is named after the service ("Cable TV"). */
+    CABLE_TV("Cable TV channels only"),
+
+    /** Everything Jellyfin's Live TV has, as the app does without Cable TV. */
+    LIVE_TV("All Live TV"),
+}
 
 /** A theme made in the theme editor: a built-in theme with some colour roles replaced. */
 data class CustomTheme(
@@ -266,6 +279,7 @@ class TvModeSettingsStore
                 .putBoolean("favouritesOnly", next.favouritesOnly)
                 .putBoolean("backExits", next.backExits)
                 .putBoolean("homeRow", next.homeRow)
+                .putString("homeLiveTv", next.homeLiveTv.name)
                 .apply()
         }
 
@@ -308,6 +322,7 @@ class TvModeSettingsStore
                 favouritesOnly = prefs.getBoolean("favouritesOnly", d.favouritesOnly),
                 backExits = prefs.getBoolean("backExits", d.backExits),
                 homeRow = prefs.getBoolean("homeRow", d.homeRow),
+                homeLiveTv = enumOr(prefs.getString("homeLiveTv", null), d.homeLiveTv),
             )
         }
 

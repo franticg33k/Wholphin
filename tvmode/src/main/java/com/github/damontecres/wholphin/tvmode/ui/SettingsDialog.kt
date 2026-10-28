@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.github.damontecres.wholphin.tvmode.HomeLiveTv
 import com.github.damontecres.wholphin.tvmode.SUBTITLE_LANGUAGES
 import com.github.damontecres.wholphin.tvmode.TvModeSettings
 import com.github.damontecres.wholphin.tvmode.core.AUDIO_LANGUAGES
@@ -101,6 +102,16 @@ fun SettingsDialog(
                 }
                 if (settings.homeRow && homeRowStatus.isNotBlank()) {
                     item { SettingRow("   Row status: $homeRowStatus", "Refresh / add") { onHomeRow() } }
+                }
+                item {
+                    SettingRow(
+                        "Live TV row on the app's home page",
+                        settings.homeLiveTv.label,
+                    ) {
+                        onChange {
+                            it.copy(homeLiveTv = if (it.homeLiveTv == HomeLiveTv.CABLE_TV) HomeLiveTv.LIVE_TV else HomeLiveTv.CABLE_TV)
+                        }
+                    }
                 }
                 item { SettingRow("Interface sounds", onOff(settings.uiSounds)) { onChange { it.copy(uiSounds = !it.uiSounds) } } }
                 item {
