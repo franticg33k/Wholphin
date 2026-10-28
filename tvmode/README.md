@@ -93,6 +93,18 @@ classic cable-guide apps in behaviour and layout only; every asset is original o
 - Channel logos come from the plugin (`logoUrl`); categories from each channel's plugin setting.
 - Video keeps its aspect ratio (pixel aspect included) instead of stretching.
 
+## Screensaver
+
+Settings → *Screensaver* can be **Cable TV channel surfing**: instead of backdrops and posters, the screensaver plays
+Cable TV with the sound off and changes channel every 15 seconds to 5 minutes (*Change channel every*). It picks a
+channel at random (your favourite channels only, when you have marked some), joins it at its scheduled point as the TV
+mode does, and shows the channel number, logo and programme in a corner for a few seconds after each change.
+
+- It replaces the content of both screensavers: the one the app shows when idle, and the system screensaver (Android's
+  *Daydream*) if you chose Wholphin there. Turn the screensaver on as usual in the app's own settings; this only changes
+  what it shows.
+- With no Cable TV channels (no plugin, or nothing to play) it falls back to the normal screensaver.
+
 ## Home screen row
 
 On Android TV and Google TV the app adds an **On now on Cable TV** row to the launcher's home screen: one tile per

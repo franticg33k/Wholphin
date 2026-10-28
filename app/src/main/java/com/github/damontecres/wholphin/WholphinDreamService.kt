@@ -27,6 +27,7 @@ import com.github.damontecres.wholphin.data.ServerRepository
 import com.github.damontecres.wholphin.preferences.AppPreferences
 import com.github.damontecres.wholphin.services.ScreensaverService
 import com.github.damontecres.wholphin.services.hilt.AuthOkHttpClient
+import com.github.damontecres.wholphin.tvmode.CableTvScreensaverOr
 import com.github.damontecres.wholphin.ui.CoilConfig
 import com.github.damontecres.wholphin.ui.components.AppScreensaverContent
 import com.github.damontecres.wholphin.ui.launchDefault
@@ -109,13 +110,15 @@ class WholphinDreamService :
                                     val screensaverPrefs = prefs.interfacePreferences.screensaverPreference
                                     val currentItem by itemFlow.collectAsState(null)
                                     Box(Modifier.fillMaxSize()) {
-                                        AppScreensaverContent(
-                                            currentItem = currentItem,
-                                            showClock = screensaverPrefs.showClock,
-                                            duration = screensaverPrefs.duration.milliseconds,
-                                            animate = screensaverPrefs.animate,
-                                            modifier = Modifier.fillMaxSize(),
-                                        )
+                                        CableTvScreensaverOr(Modifier.fillMaxSize()) {
+                                            AppScreensaverContent(
+                                                currentItem = currentItem,
+                                                showClock = screensaverPrefs.showClock,
+                                                duration = screensaverPrefs.duration.milliseconds,
+                                                animate = screensaverPrefs.animate,
+                                                modifier = Modifier.fillMaxSize(),
+                                            )
+                                        }
                                         if (screensaverPrefs.dimEnabled) {
                                             val alpha = screensaverPrefs.dimPercent / 100f
                                             Box(

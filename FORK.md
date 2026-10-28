@@ -43,6 +43,7 @@ These are the only places a sync can conflict (about 64 lines in total):
 | `services/NavDrawerService.kt` | adds the item when `CableTvAvailability` says the plugin is there |
 | `res/values/strings.xml` | `cable_tv` string; `app_name` is "Wholphin Cable TV" |
 | `preferences/AppPreference.kt` | the default update URL is this fork's latest release, so in-app updates come from here |
+| `MainContent.kt`, `WholphinDreamService.kt` | the screensaver content is wrapped in `CableTvScreensaverOr { ... }`: Cable TV channel surfing when chosen in the TV mode settings, the app's own screensaver otherwise |
 | `services/IntentService.kt` | a few lines that send a `wholphin://cabletv` link (the home screen row's tiles) to the TV mode |
 | `data/model/BaseItem.kt` | `destination()` sends a Cable TV channel (or a programme on one) to `Destination.CableTv` instead of Live TV playback |
 | `services/PlayerFactory.kt` | optional `loadControl` parameter on `createVideoPlayer` (TV mode starts playback after less buffering) |
