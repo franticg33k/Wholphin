@@ -102,25 +102,45 @@ jobs:
       - name: Open a PR
         if: steps.merge.outputs.result == 'merged'
         run: |
-          git push origin "${{ steps.merge.outputs.branch }}"
+          branch="${{ steps.merge.outputs.branch }}"
+          git push origin "$branch"
           if [ "${{ steps.build.outcome }}" = "success" ]; then
             status="Build and tests passed on the merge."
           else
             status="**Build or tests failed on the merge** - see ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}. Fix on this branch before merging."
           fi
-          if ! gh pr create --base cable-tv --head "${{ steps.merge.outputs.branch }}" \
-            --title "Sync upstream Wholphin ($(date -u +%Y-%m-%d))" \
-            --body "Merges upstream damontecres/Wholphin main into cable-tv. $status Merge with a merge commit (not squash) so the next sync starts from here."; then
-            compare="${{ github.server_url }}/${{ github.repository }}/compare/cable-tv...${{ steps.merge.outputs.branch }}?expand=1"
-            echo "::error::The sync branch is pushed but the PR couldn't be opened. Turn on Settings > Actions > General > Workflow permissions > 'Allow GitHub Actions to create and approve pull requests'. Open the PR by hand: $compare"
+          body="Merges upstream damontecres/Wholphin main into cable-tv. $status Merge with a merge commit (not squash) so the next sync starts from here."
+          title="Sync upstream Wholphin ($(date -u +%Y-%m-%d))"
+          # Through the REST API, with a few tries: the first call straight after the push has failed with "Head sha can't
+          # be blank ... No commits between", although the branch was there, and REST says plainly what went wrong.
+          created=""
+          for attempt in 1 2 3 4; do
+            if out=$(gh api -X POST "repos/${{ github.repository }}/pulls" -f title="$title" -f head="$branch" -f base=cable-tv -f body="$body" --jq .html_url 2>&1); then
+              created="$out"
+              break
+            fi
+            if echo "$out" | grep -q "already exists"; then
+              created="already open"
+              break
+            fi
+            echo "Attempt $attempt to open the PR failed: $out"
+            sleep 20
+          done
+          if [ -z "$created" ]; then
+            compare="${{ github.server_url }}/${{ github.repository }}/compare/cable-tv...$branch?expand=1"
+            echo "::error::The sync branch is pushed but the PR couldn't be opened (last error: $out). It needs Settings > Actions > General > Workflow permissions > 'Allow GitHub Actions to create and approve pull requests' (or a SYNC_TOKEN that can open PRs). Open the PR by hand: $compare"
             {
               echo "### Sync branch ready, PR not opened"
               echo "$status"
               echo ""
-              echo "[Open the pull request]($compare), merging with a merge commit. To let the workflow do it, turn on *Allow GitHub Actions to create and approve pull requests* (Settings > Actions > General)."
+              echo "Last error: \`$out\`"
+              echo ""
+              echo "[Open the pull request]($compare), merging with a merge commit."
             } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
+          echo "PR: $created"
+          echo "### Sync PR: $created" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Report that a token is needed
         if: steps.merge.outputs.result == 'needs-token'
