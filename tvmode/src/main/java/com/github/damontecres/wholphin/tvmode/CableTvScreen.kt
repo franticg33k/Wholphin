@@ -374,17 +374,16 @@ private fun VideoSurface(
 ) {
     // Letterbox or pillarbox to the video's own aspect ratio (pixel aspect included) instead of stretching.
     val presentation = rememberPresentationState(player)
-    // The captions on screen follow what the player says it is showing now. The player announces changes (onCues), but
-    // a missed announcement used to leave the last line up for good, even across channels with no subtitles, because
-    // nothing more is announced then. So every event that can end a caption re-reads the player, and a once-a-second
-    // check repairs anything an event missed.
-    var cues by remember(player) { mutableStateOf(visibleCues(player)) }
+    // The captions on screen follow what the player says it is showing now, and are pushed straight to the caption view
+    // rather than through the view's Compose update block: that block stops running once the video has been moved
+    // between full screen and the guide's preview window, which left the last line frozen on screen (across every
+    // channel) until TV mode was closed. Every event that can end a caption re-reads the player, and a once-a-second
+    // pass puts the right captions on the view whatever happened to it.
+    val captions = remember(player) { CaptionView() }
     DisposableEffect(player) {
         val listener =
             object : Player.Listener {
-                private fun refresh() {
-                    cues = visibleCues(player)
-                }
+                private fun refresh() = captions.show(visibleCues(player))
 
                 override fun onCues(cueGroup: CueGroup) = refresh()
 
@@ -409,15 +408,13 @@ private fun VideoSurface(
                 ) = refresh()
             }
         player.addListener(listener)
-        cues = visibleCues(player)
+        captions.show(visibleCues(player))
         onDispose { player.removeListener(listener) }
     }
     LaunchedEffect(player, epoch) {
-        cues = visibleCues(player)
         while (true) {
+            captions.redraw(visibleCues(player))
             delay(CAPTION_CHECK_MS)
-            val now = visibleCues(player)
-            if (now !== cues) cues = now
         }
     }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -433,12 +430,13 @@ private fun VideoSurface(
                 // Subtitles over the picture, in the viewer's caption style (Android accessibility settings).
                 AndroidView(
                     factory = { context ->
-                        SubtitleView(context).apply {
-                            setUserDefaultStyle()
-                            setUserDefaultTextSize()
-                        }
+                        SubtitleView(context)
+                            .apply {
+                                setUserDefaultStyle()
+                                setUserDefaultTextSize()
+                            }.also { captions.attach(it, visibleCues(player)) }
                     },
-                    update = { it.setCues(cues) },
+                    update = { captions.show(visibleCues(player)) },
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -447,6 +445,37 @@ private fun VideoSurface(
 }
 
 private const val CAPTION_CHECK_MS = 1_000L
+
+/** Puts captions on a [SubtitleView] directly, remembering what it was last given. */
+private class CaptionView {
+    private var view: SubtitleView? = null
+    private var shown: List<Cue>? = null
+
+    /** Starts using [view], showing [cues] on it. */
+    fun attach(
+        view: SubtitleView,
+        cues: List<Cue>,
+    ) {
+        this.view = view
+        shown = null
+        show(cues)
+    }
+
+    /** Shows [cues] unless the view already has them. */
+    fun show(cues: List<Cue>) {
+        val view = view ?: return
+        if (cues !== shown) {
+            view.setCues(cues)
+            shown = cues
+        }
+    }
+
+    /** Shows [cues] again whatever the view has, repairing a view that lost them. */
+    fun redraw(cues: List<Cue>) {
+        view?.setCues(cues)
+        shown = cues
+    }
+}
 
 /** The captions the player is showing now: none when no subtitle track is selected, whatever was last announced. */
 private fun visibleCues(player: Player): List<Cue> =
