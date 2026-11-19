@@ -19,7 +19,7 @@ import okhttp3.Request
 import org.jellyfin.sdk.api.client.ApiClient
 import org.jellyfin.sdk.api.client.extensions.audioApi
 import org.jellyfin.sdk.api.client.extensions.subtitleApi
-import org.jellyfin.sdk.api.client.extensions.videosApi
+import org.jellyfin.sdk.api.client.extensions.videoApi
 import java.io.IOException
 import java.util.UUID
 import javax.inject.Inject
@@ -85,7 +85,7 @@ class WholphinTvModeHost
                     static = true,
                 )
             } else {
-                api.videosApi.getVideoStreamUrl(
+                api.videoApi.getVideoStreamUrl(
                     itemId = UUID.fromString(itemId.toDashedUuid()),
                     mediaSourceId = mediaSourceId,
                     static = true,
